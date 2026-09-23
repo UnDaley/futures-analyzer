@@ -13,6 +13,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 5 (seans analizi) tamamlandı: Asya/Londra/New York high-low, NY açılışı, önceki NY high-low.
 - Faz 6 (likidite / price action) tamamlandı: BSL/SSL, equal high/low, sweep, FVG, displacement, order block, premium/discount.
 - Faz 7 (makro) tamamlandı: Fed faizi, 2Y/10Y, eğri, reel faiz, CPI/PPI/PCE, NFP, işsizlik, GSYH (FRED).
+- Faz 8 (intermarket) tamamlandı: ES/NQ/YM/RTY/DXY/US10Y/US02Y/VIX (NQ, ES), DXY/US10Y/reel faiz/SI (GC), korelasyon, SMT.
 
 ## Kurulum
 
@@ -47,6 +48,7 @@ export UV_PROJECT_ENVIRONMENT=/goinfre/$USER/venvs/futures-analyzer
 uv run python -m futures_analyzer.cli fetch NQ                     # bütün zaman dilimleri
 uv run python -m futures_analyzer.cli fetch NQ --timeframe 1h      # sadece 1h (+ 4h)
 uv run python -m futures_analyzer.cli fetch-macro                  # makro veriler (FRED)
+uv run python -m futures_analyzer.cli fetch-intermarket            # YM, RTY, DXY, US10Y, VIX, SI (1h)
 uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
 uv run python -m futures_analyzer.cli snapshot NQ                 # göstergeler, structure, seviyeler (JSON)
 
@@ -115,3 +117,7 @@ NY açılışı NQ/ES için 09:30, GC için 08:20 (COMEX). Seanslar New York saa
 ## Makro (FRED)
 
 API anahtarı gerekmez. Faizler günlük (genelde 1 iş günü gecikmeli), enflasyon ve istihdam aylık güncellenir; her değerin tarihi snapshot'ta verilir. Enflasyon endeksleri yıllık % değişim (YoY) olarak, NFP aylık değişim (bin kişi) olarak raporlanır. Not: FRED özel User-Agent içeren istekleri reddediyor.
+
+## Intermarket
+
+Her ilişkili varlığın günlük değişimi (faizlerde baz puan) önceki işlem günü kapanışına göre hesaplanır ve beklenen ilişkiye (+1 aynı yön, -1 ters yön) göre kontratın hareketini doğrulayıp (`confirms`) doğrulamadığı (`diverges`) belirtilir. `correlation_20d` ilişkinin gerçekten sürüp sürmediğini gösterir. SMT: eş varlıklardan (NQ-ES, GC-SI) biri önceki gün high/low'unu alıp diğeri alamadıysa uyumsuzluk işaretlenir. 2 yıllık faiz ve reel faiz FRED'den gelir (1 iş günü gecikmeli olabilir, tarihi belirtilir).

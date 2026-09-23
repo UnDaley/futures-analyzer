@@ -4,6 +4,7 @@
     python -m futures_analyzer.cli fetch NQ                  # bütün zaman dilimleri
     python -m futures_analyzer.cli fetch NQ --timeframe 1h   # sadece 1h (+ 4h)
     python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
+    python -m futures_analyzer.cli fetch-intermarket
     python -m futures_analyzer.cli fetch-macro
     python -m futures_analyzer.cli snapshot NQ
 """
@@ -19,7 +20,7 @@ from futures_analyzer.data.ingest import FETCH_TIMEFRAMES, ingest
 from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.data.providers.yahoo import YahooProvider
 from futures_analyzer.data.storage import create_tables, get_engine, load_candles
-from futures_analyzer.instruments import get_instrument
+from futures_analyzer.instruments import INTERMARKET_ASSETS, get_instrument
 from futures_analyzer.macro.ingest import ingest_macro
 
 
@@ -34,6 +35,18 @@ def cmd_fetch(args: argparse.Namespace) -> None:
         saved = ingest(engine, provider, instrument, timeframe)
         for tf, count in saved.items():
             print(f"{instrument.symbol} {tf}: {count} mum kaydedildi")
+
+
+def cmd_fetch_intermarket(args: argparse.Namespace) -> None:
+    engine = get_engine()
+    create_tables(engine)
+    provider = YahooProvider()
+    for asset in INTERMARKET_ASSETS.values():
+        try:
+            saved = ingest(engine, provider, asset, "1h")
+            print(f"{asset.symbol}: {saved['1h']} mum kaydedildi")
+        except Exception as error:
+            print(f"{asset.symbol}: HATA ({error})")
 
 
 def cmd_fetch_macro(args: argparse.Namespace) -> None:
@@ -70,6 +83,9 @@ def main() -> None:
     fetch.add_argument("symbol", help="Örn. NQ, ES, GC")
     fetch.add_argument("--timeframe", choices=FETCH_TIMEFRAMES, help="Boş bırakılırsa hepsi çekilir")
     fetch.set_defaults(func=cmd_fetch)
+
+    intermarket = sub.add_parser("fetch-intermarket", help="İlişkili varlıkları (YM, RTY, DXY, US10Y, VIX, SI) çek")
+    intermarket.set_defaults(func=cmd_fetch_intermarket)
 
     macro = sub.add_parser("fetch-macro", help="Makro verileri FRED'den çek")
     macro.set_defaults(func=cmd_fetch_macro)

@@ -23,6 +23,18 @@ INSTRUMENTS = {
 }
 
 
+# Intermarket analizi için izlenen yardımcı varlıklar. Bunlar için analiz raporu üretilmez.
+# Not: 2 yıllık faiz ve reel faiz yfinance'te güvenilir değil; onlar FRED'den (makro) alınır.
+INTERMARKET_ASSETS = {
+    "YM": Instrument("YM", "E-mini Dow", "YM=F", 1.0, 100),
+    "RTY": Instrument("RTY", "E-mini Russell 2000", "RTY=F", 0.1, 10),
+    "DXY": Instrument("DXY", "ABD Dolar Endeksi", "DX-Y.NYB", 0.001, 1),
+    "US10Y": Instrument("US10Y", "ABD 10 yıllık faiz (%)", "^TNX", 0.001, 0.1),
+    "VIX": Instrument("VIX", "CBOE Volatilite Endeksi", "^VIX", 0.01, 1),
+    "SI": Instrument("SI", "Gümüş", "SI=F", 0.005, 1),
+}
+
+
 def get_instrument(symbol: str) -> Instrument:
     """Sembolden Instrument döndürür. Bilinmeyen sembolde anlaşılır bir hata verir."""
     key = symbol.upper()

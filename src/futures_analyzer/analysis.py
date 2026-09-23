@@ -4,6 +4,7 @@
 - sessions: Asya / Londra / New York high-low, NY açılışı (Faz 5)
 - liquidity: BSL/SSL, sweep, FVG, displacement, order block, premium/discount (Faz 6)
 - macro: faizler, enflasyon, istihdam, büyüme (Faz 7)
+- intermarket: ilişkili varlıklarla uyum, korelasyon, SMT (Faz 8)
 - timeframes: her zaman dilimi için
     - technical: gösterge değerleri (Faz 2)
     - structure: swing'ler, HH/HL, BOS/CHoCH (Faz 3)
@@ -16,6 +17,7 @@ from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.data.storage import load_candles
 from futures_analyzer.indicators.engine import add_indicators, latest_snapshot
 from futures_analyzer.instruments import get_instrument
+from futures_analyzer.intermarket.engine import RELATIONSHIPS, SMT_PAIRS, intermarket_snapshot
 from futures_analyzer.levels.engine import levels_snapshot
 from futures_analyzer.liquidity.engine import liquidity_snapshot
 from futures_analyzer.macro.engine import macro_snapshot
@@ -44,6 +46,11 @@ def market_snapshot(db: Engine, symbol: str) -> dict:
             "structure": structure_snapshot(closed, timeframe) if len(closed) else None,
         }
 
+    macro_series = load_macro(db)
+    related = {*RELATIONSHIPS.get(instrument.symbol, {}), SMT_PAIRS.get(instrument.symbol)} - {None}
+    hourly_by_symbol = {instrument.symbol: candles["1h"]}
+    hourly_by_symbol.update({other: load_candles(db, other, "1h") for other in related})
+
     sessions = sessions_snapshot(candles["5m"], instrument)
     price = float(candles["5m"]["close"].iloc[-1]) if not candles["5m"].empty else None
     return {
@@ -53,6 +60,7 @@ def market_snapshot(db: Engine, symbol: str) -> dict:
         "sessions": sessions,
         "levels": levels_snapshot(candles, instrument, extra_levels=session_levels(sessions)),
         "liquidity": liquidity_snapshot(candles, price) if price is not None else None,
-        "macro": macro_snapshot(load_macro(db)),
+        "macro": macro_snapshot(macro_series),
+        "intermarket": intermarket_snapshot(instrument.symbol, hourly_by_symbol, macro_series),
         "timeframes": timeframes,
     }
