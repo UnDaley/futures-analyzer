@@ -11,7 +11,7 @@ import pandas as pd
 from futures_analyzer.indicators.calculations import atr, ema, macd, rsi, sma
 from futures_analyzer.indicators.trend import classify_ema_trend
 from futures_analyzer.indicators.vwap import session_vwap
-from futures_analyzer.market_time import NEW_YORK, SESSION_CLOSE_HOUR
+from futures_analyzer.market_time import is_bar_complete
 
 EMA_PERIODS = [20, 50, 100, 200]
 RSI_PERIOD = 14
@@ -20,11 +20,6 @@ VOLUME_AVG_PERIOD = 20
 
 # VWAP seans içi bir göstergedir; günlük ve 4H mumlarda anlamlı değil.
 VWAP_TIMEFRAMES = {"1h", "15m", "5m"}
-
-# yfinance verisi ~15 dk gecikmeli gelir ve son satır henüz dolmamış (hacmi 0 olabilen) mumdur.
-# Bir mumu ancak kapanışından bu kadar sonra kesinleşmiş sayıyoruz. Gerçek zamanlı bir
-# veri kaynağına geçince bu değer küçültülmeli.
-DATA_DELAY = pd.Timedelta(minutes=15)
 
 
 def add_indicators(candles: pd.DataFrame, timeframe: str) -> pd.DataFrame:
@@ -50,13 +45,12 @@ def latest_snapshot(df: pd.DataFrame, timeframe: str, now: pd.Timestamp | None =
     close = float(last["close"])
     volume_avg = _value(last, f"volume_avg_{VOLUME_AVG_PERIOD}")
     vwap = _value(last, "vwap")
-    now = now or pd.Timestamp.now(tz="UTC")
 
     return {
         "timeframe": timeframe,
         "ts": df.index[-1].isoformat(),
         # Kapanmamış mumun hacmi ve fiyatı henüz kesin değildir (örn. relative_volume düşük görünür).
-        "last_bar_complete": bool(now >= bar_end(df.index[-1], timeframe) + DATA_DELAY),
+        "last_bar_complete": is_bar_complete(df.index[-1], timeframe, now),
         "close": close,
         "ema": {str(period): _value(last, f"ema_{period}") for period in EMA_PERIODS},
         "ema_trend": classify_ema_trend(
@@ -77,18 +71,6 @@ def latest_snapshot(df: pd.DataFrame, timeframe: str, now: pd.Timestamp | None =
             round(float(last["volume"]) / volume_avg, 2) if volume_avg else None
         ),
     }
-
-
-def bar_end(ts: pd.Timestamp, timeframe: str) -> pd.Timestamp:
-    """Mumun kapanış zamanı (UTC).
-
-    Günlük mumun zaman damgası işlem gününün tarihidir; o gün New York saatiyle 17:00'de kapanır.
-    """
-    if timeframe == "1d":
-        session_date = ts.tz_convert(NEW_YORK).date()
-        close_time = pd.Timestamp(session_date, tz=NEW_YORK) + pd.Timedelta(hours=SESSION_CLOSE_HOUR)
-        return close_time.tz_convert("UTC")
-    return ts + pd.Timedelta(timeframe)
 
 
 def _value(row: pd.Series, column: str) -> float | None:

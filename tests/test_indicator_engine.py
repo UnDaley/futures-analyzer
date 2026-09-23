@@ -2,10 +2,11 @@ import math
 
 import pandas as pd
 
-from futures_analyzer.analysis import technical_snapshot
+from futures_analyzer.analysis import market_snapshot
 from futures_analyzer.data.storage import save_candles
-from futures_analyzer.indicators.engine import add_indicators, bar_end, latest_snapshot
+from futures_analyzer.indicators.engine import add_indicators, latest_snapshot
 from futures_analyzer.indicators.trend import classify_ema_trend
+from futures_analyzer.market_time import bar_end
 from tests.conftest import make_hourly_candles
 
 NAN = float("nan")
@@ -84,11 +85,11 @@ def test_last_bar_complete_flag():
     assert latest_snapshot(df, "1h", now=last_ts + pd.Timedelta(minutes=75))["last_bar_complete"] is True
 
 
-def test_technical_snapshot_from_database(engine):
+def test_market_snapshot_from_database(engine):
     save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
 
-    result = technical_snapshot(engine, "NQ")
+    result = market_snapshot(engine, "NQ")
 
     assert result["instrument"] == "NQ"
-    assert result["timeframes"]["1h"]["ema_trend"] == "bullish"
+    assert result["timeframes"]["1h"]["technical"]["ema_trend"] == "bullish"
     assert result["timeframes"]["1d"] is None  # günlük veri kaydedilmedi

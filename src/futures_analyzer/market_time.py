@@ -11,6 +11,11 @@ NEW_YORK = "America/New_York"
 SESSION_OPEN_HOUR = 18
 SESSION_CLOSE_HOUR = 17
 
+# yfinance verisi ~15 dk gecikmeli gelir ve son satır henüz dolmamış (hacmi 0 olabilen) mumdur.
+# Bir mumu ancak kapanışından bu kadar sonra kesinleşmiş sayıyoruz. Gerçek zamanlı bir
+# veri kaynağına geçince bu değer küçültülmeli.
+DATA_DELAY = pd.Timedelta(minutes=15)
+
 
 def floor_to_session_grid(index: pd.DatetimeIndex, freq: str) -> pd.DatetimeIndex:
     """Her zaman damgasını, seans açılışından başlayan freq'lik dilimin başına indirir.
@@ -38,3 +43,28 @@ def floor_to_session_grid(index: pd.DatetimeIndex, freq: str) -> pd.DatetimeInde
 def session_start(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     """Her zaman damgasının ait olduğu seansın açılış zamanı (UTC)."""
     return floor_to_session_grid(index, "1D")
+
+
+def bar_end(ts: pd.Timestamp, timeframe: str) -> pd.Timestamp:
+    """Mumun kapanış zamanı (UTC).
+
+    Günlük mumun zaman damgası işlem gününün tarihidir; o gün New York saatiyle 17:00'de kapanır.
+    """
+    if timeframe == "1d":
+        session_date = ts.tz_convert(NEW_YORK).date()
+        close_time = pd.Timestamp(session_date, tz=NEW_YORK) + pd.Timedelta(hours=SESSION_CLOSE_HOUR)
+        return close_time.tz_convert("UTC")
+    return ts + pd.Timedelta(timeframe)
+
+
+def is_bar_complete(ts: pd.Timestamp, timeframe: str, now: pd.Timestamp | None = None) -> bool:
+    """Mum kapandı ve veri gecikmesi de geçti mi?"""
+    now = now or pd.Timestamp.now(tz="UTC")
+    return bool(now >= bar_end(ts, timeframe) + DATA_DELAY)
+
+
+def drop_incomplete_last_bar(df: pd.DataFrame, timeframe: str, now: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Son mum henüz kesinleşmediyse onu çıkarır. Kapanışa dayalı analizler için."""
+    if df.empty or is_bar_complete(df.index[-1], timeframe, now):
+        return df
+    return df.iloc[:-1]

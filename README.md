@@ -8,6 +8,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 
 - Faz 1 (piyasa verisi toplama) tamamlandı.
 - Faz 2 (teknik göstergeler) tamamlandı: EMA 20/50/100/200, RSI 14, MACD, ATR 14, seans VWAP'ı, hacim ortalaması, EMA trendi.
+- Faz 3 (market structure) tamamlandı: swing high/low, HH/HL/LH/LL, BOS, CHoCH.
 
 ## Kurulum
 
@@ -42,11 +43,11 @@ export UV_PROJECT_ENVIRONMENT=/goinfre/$USER/venvs/futures-analyzer
 uv run python -m futures_analyzer.cli fetch NQ                     # bütün zaman dilimleri
 uv run python -m futures_analyzer.cli fetch NQ --timeframe 1h      # sadece 1h (+ 4h)
 uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
-uv run python -m futures_analyzer.cli indicators NQ               # göstergeler (JSON)
+uv run python -m futures_analyzer.cli snapshot NQ                 # göstergeler + market structure (JSON)
 
 uv run uvicorn futures_analyzer.api:app --reload
 curl "localhost:8000/candles?symbol=NQ&tf=1h&limit=5"
-curl "localhost:8000/indicators?symbol=NQ"
+curl "localhost:8000/snapshot?symbol=NQ"
 ```
 
 ## Testler
@@ -72,3 +73,11 @@ uv run pytest -m network    # gerçek yfinance verisiyle test
 - RSI ve ATR, TradingView ile aynı Wilder ortalamasını (ta.rma) kullanır. Değerler `ta` kütüphanesiyle birebir karşılaştırıldı.
 - VWAP her seans açılışında (New York 18:00) sıfırlanır ve sadece 1h, 15m, 5m için hesaplanır.
 - Yeterli veri yoksa değer `null` olur, tahmin edilmez.
+
+## Market structure kuralları
+
+- Swing high: high'ı solundaki 3 mumdan yüksek, sağındaki 3 mumdan düşük olmayan mum (swing low tersi). Swing ancak sağdaki 3 mum kapanınca kesinleşir.
+- Etiketler: her swing bir önceki aynı türden swing ile karşılaştırılır (HH/LH/EH, HL/LL/EL).
+- BOS/CHoCH: kapanış son kırılmamış swing'in ötesine geçerse kırılım olur. Trend yönündeyse BOS, tersiyse CHoCH. İğneler sayılmaz.
+- Yapı sadece kapanmış mumlarla hesaplanır. Geçmiş olaylar sonradan gelen veriyle değişmez (testle doğrulandı).
+- `trend_by_breaks` son kırılımın yönüdür, `swing_pattern` son swing etiketleridir. Etiketler yeni swing oluşana kadar geriden gelir; `price_position` fiyatın son swing'lere göre yerini gösterir.

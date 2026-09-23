@@ -8,7 +8,7 @@ from functools import lru_cache
 from fastapi import Depends, FastAPI, HTTPException, Query
 from sqlalchemy import Engine
 
-from futures_analyzer.analysis import technical_snapshot
+from futures_analyzer.analysis import market_snapshot
 from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.data.storage import get_engine, load_candles
 from futures_analyzer.instruments import INSTRUMENTS
@@ -43,9 +43,9 @@ def candles(
     return [{"ts": ts.isoformat(), **row} for ts, row in df.to_dict("index").items()]
 
 
-@app.get("/indicators")
-def indicators(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
+@app.get("/snapshot")
+def snapshot(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
     symbol = symbol.upper()
     if symbol not in INSTRUMENTS:
         raise HTTPException(404, f"Bilinmeyen sembol: {symbol}")
-    return technical_snapshot(engine, symbol)
+    return market_snapshot(engine, symbol)
