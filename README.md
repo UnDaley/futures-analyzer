@@ -6,7 +6,8 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 
 ## Durum
 
-Faz 1 (piyasa verisi toplama) tamamlandı.
+- Faz 1 (piyasa verisi toplama) tamamlandı.
+- Faz 2 (teknik göstergeler) tamamlandı: EMA 20/50/100/200, RSI 14, MACD, ATR 14, seans VWAP'ı, hacim ortalaması, EMA trendi.
 
 ## Kurulum
 
@@ -41,9 +42,11 @@ export UV_PROJECT_ENVIRONMENT=/goinfre/$USER/venvs/futures-analyzer
 uv run python -m futures_analyzer.cli fetch NQ                     # bütün zaman dilimleri
 uv run python -m futures_analyzer.cli fetch NQ --timeframe 1h      # sadece 1h (+ 4h)
 uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
+uv run python -m futures_analyzer.cli indicators NQ               # göstergeler (JSON)
 
 uv run uvicorn futures_analyzer.api:app --reload
 curl "localhost:8000/candles?symbol=NQ&tf=1h&limit=5"
+curl "localhost:8000/indicators?symbol=NQ"
 ```
 
 ## Testler
@@ -61,3 +64,11 @@ uv run pytest -m network    # gerçek yfinance verisiyle test
 - Zamanlar veritabanında UTC saklanır.
 - 4H mumlar 1H'den üretilir ve New York saatiyle 18:00'e (CME seans açılışı) hizalıdır.
 - Erken kapanan tatil günlerinde yfinance 1H mumları 09:30'a hizalar.
+- yfinance'in son satırı henüz dolmamış mumdur (hacmi 0 olabilir). Snapshot'taki `last_bar_complete` bunu gösterir.
+- GC 1H verisinde seansın 18:00 mumunun hacmi genelde 0 gelir.
+
+## Gösterge notları
+
+- RSI ve ATR, TradingView ile aynı Wilder ortalamasını (ta.rma) kullanır. Değerler `ta` kütüphanesiyle birebir karşılaştırıldı.
+- VWAP her seans açılışında (New York 18:00) sıfırlanır ve sadece 1h, 15m, 5m için hesaplanır.
+- Yeterli veri yoksa değer `null` olur, tahmin edilmez.

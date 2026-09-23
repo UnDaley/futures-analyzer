@@ -28,6 +28,15 @@ def test_candles(client, engine):
     assert set(body[0]) == {"ts", "open", "high", "low", "close", "volume"}
 
 
+def test_indicators(client, engine):
+    save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
+
+    body = client.get("/indicators", params={"symbol": "nq"}).json()
+
+    assert body["instrument"] == "NQ"
+    assert body["timeframes"]["1h"]["ema_trend"] == "bullish"
+
+
 def test_unknown_symbol(client):
     assert client.get("/candles", params={"symbol": "XYZ"}).status_code == 404
 

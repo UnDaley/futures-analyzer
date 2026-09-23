@@ -4,13 +4,16 @@
     python -m futures_analyzer.cli fetch NQ                  # bütün zaman dilimleri
     python -m futures_analyzer.cli fetch NQ --timeframe 1h   # sadece 1h (+ 4h)
     python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
+    python -m futures_analyzer.cli indicators NQ
 """
 
 import argparse
+import json
 import logging
 
 import pandas as pd
 
+from futures_analyzer.analysis import technical_snapshot
 from futures_analyzer.data.ingest import FETCH_TIMEFRAMES, ingest
 from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.data.providers.yahoo import YahooProvider
@@ -43,6 +46,12 @@ def cmd_show(args: argparse.Namespace) -> None:
         print(df)
 
 
+def cmd_indicators(args: argparse.Namespace) -> None:
+    instrument = get_instrument(args.symbol)
+    snapshot = technical_snapshot(get_engine(), instrument.symbol)
+    print(json.dumps(snapshot, indent=2, ensure_ascii=False))
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(prog="futures_analyzer")
@@ -58,6 +67,10 @@ def main() -> None:
     show.add_argument("--timeframe", choices=TIMEFRAMES, default="1h")
     show.add_argument("--limit", type=int, default=10)
     show.set_defaults(func=cmd_show)
+
+    indicators = sub.add_parser("indicators", help="Her zaman dilimi için son gösterge değerleri (JSON)")
+    indicators.add_argument("symbol")
+    indicators.set_defaults(func=cmd_indicators)
 
     args = parser.parse_args()
     args.func(args)
