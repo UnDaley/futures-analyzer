@@ -9,6 +9,7 @@
     python -m futures_analyzer.cli fetch-news
     python -m futures_analyzer.cli fetch-all                 # hepsi
     python -m futures_analyzer.cli snapshot NQ
+    python -m futures_analyzer.cli report NQ                 # Claude raporu
 """
 
 import argparse
@@ -17,6 +18,7 @@ import logging
 
 import pandas as pd
 
+from futures_analyzer.ai.report import ReportError, generate_report
 from futures_analyzer.analysis import market_snapshot
 from futures_analyzer.data.ingest import FETCH_TIMEFRAMES, ingest
 from futures_analyzer.data.providers.base import TIMEFRAMES
@@ -93,6 +95,22 @@ def cmd_snapshot(args: argparse.Namespace) -> None:
     print(json.dumps(snapshot, indent=2, ensure_ascii=False))
 
 
+def cmd_report(args: argparse.Namespace) -> None:
+    instrument = get_instrument(args.symbol)
+    snapshot = market_snapshot(get_engine(), instrument.symbol)
+    try:
+        report = generate_report(snapshot)
+    except ReportError as error:
+        print(f"Rapor üretilemedi: {error}")
+        raise SystemExit(1)
+
+    print(report["text"])
+    print()
+    print(f"-- model: {report['model']} | deneme: {report['attempts']} | token: {report['usage']}")
+    if not report["validated"]:
+        print(f"!! UYARI: raporda veride olmayan sayılar var: {', '.join(report['unknown_numbers'])}")
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser(prog="futures_analyzer")
@@ -124,6 +142,10 @@ def main() -> None:
     snapshot = sub.add_parser("snapshot", help="Her zaman dilimi için göstergeler ve market structure (JSON)")
     snapshot.add_argument("symbol")
     snapshot.set_defaults(func=cmd_snapshot)
+
+    report = sub.add_parser("report", help="Claude ile analiz raporu üret (ANTHROPIC_API_KEY gerekir)")
+    report.add_argument("symbol")
+    report.set_defaults(func=cmd_report)
 
     args = parser.parse_args()
     args.func(args)

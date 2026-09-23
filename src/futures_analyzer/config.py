@@ -7,6 +7,10 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "postgresql+psycopg://futures:futures@localhost:5432/futures"
+    # Claude raporu için model ve API anahtarı (.env veya ortam değişkeni).
+    # Anahtar boşsa SDK kendi yöntemleriyle arar (ANTHROPIC_API_KEY, `ant auth login` profili...).
+    anthropic_model: str = "claude-opus-5"
+    anthropic_api_key: str | None = None
 
 
 settings = Settings()
