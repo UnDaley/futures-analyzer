@@ -11,6 +11,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 3 (market structure) tamamlandı: swing high/low, HH/HL/LH/LL, BOS, CHoCH.
 - Faz 4 (destek/direnç) tamamlandı: PDH/PDL, PWH/PWL, seans high/low, VWAP, swing'ler, round number, zone'lar.
 - Faz 5 (seans analizi) tamamlandı: Asya/Londra/New York high-low, NY açılışı, önceki NY high-low.
+- Faz 6 (likidite / price action) tamamlandı: BSL/SSL, equal high/low, sweep, FVG, displacement, order block, premium/discount.
 
 ## Kurulum
 
@@ -99,3 +100,12 @@ uv run pytest -m network    # gerçek yfinance verisiyle test
 | New York | 08:00-17:00 |
 
 NY açılışı NQ/ES için 09:30, GC için 08:20 (COMEX). Seanslar New York saatine göre tanımlıdır, yaz saati değişimleri otomatik uygulanır. `taken` alanı bir seansın high/low'unun sonraki seanslarda aşılıp aşılmadığını gösterir. Seans seviyeleri destek/direnç zone'larına da eklenir.
+
+## Likidite / price action (1H ve 15M, son 500 kapanmış mum)
+
+- BSL/SSL: aşılmamış swing high/low'lar; ATR'nin 0,1'i kadar yakın olanlar equal high/low olarak birleşir.
+- Sweep: iğne seviyeyi aşar ama mum içeride kapanır. Dışarıda kapanış kırılımdır, sweep değildir.
+- FVG (imbalance): 3 mumlu boşluk; open / partial durumdakiler raporlanır, dolanlar raporlanmaz.
+- Displacement: gövdesi önceki ATR'nin 1,5 katından büyük, gövde/aralık oranı en az %60 olan mum.
+- Order block: displacement'tan önceki son ters renkli mum; fresh / tested, ötesinde kapanış olursa geçersiz.
+- Premium/discount: son 30 adet 4H mumun aralığında fiyatın yüzdesi (>%55 premium, <%45 discount).
