@@ -20,6 +20,7 @@
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -39,6 +40,9 @@ from futures_analyzer.instruments import INSTRUMENTS, INTERMARKET_ASSETS, get_in
 from futures_analyzer.macro.ingest import ingest_macro
 from futures_analyzer.news.engine import ingest_news
 from futures_analyzer.refresh import refresh_all
+
+# Terminale yapıştırılan metnin bittiğini bildiren tuşlar
+END_OF_INPUT = "Ctrl+Z ve Enter" if os.name == "nt" else "Ctrl+D"
 
 
 def cmd_fetch(args: argparse.Namespace) -> None:
@@ -136,7 +140,7 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     out.write_text(manual_prompt(snapshot), encoding="utf-8")
     print(f"Analiz #{analysis_id} kaydedildi. Prompt dosyası: {out}")
     print("1) Dosyanın içeriğinin tamamını claude.ai'de yeni bir sohbete yapıştırın.")
-    print(f"2) Claude'un cevabını kopyalayın ve şu komutu çalıştırıp terminale yapıştırın (bitince Ctrl+D):")
+    print(f"2) Claude'un cevabını kopyalayın ve şu komutu çalıştırıp terminale yapıştırın (bitince {END_OF_INPUT}):")
     print(f"   uv run python -m futures_analyzer.cli check-report {analysis_id}")
 
 
@@ -150,7 +154,7 @@ def cmd_check_report(args: argparse.Namespace) -> None:
             raise SystemExit(1)
         text = path.read_text(encoding="utf-8")
     else:
-        print("Claude'un raporunu buraya yapıştırın. Bitince yeni bir satırda Ctrl+D tuşlarına basın:")
+        print(f"Claude'un raporunu buraya yapıştırın. Bitince yeni bir satırda {END_OF_INPUT} tuşlarına basın:")
         text = sys.stdin.read()
     if not text.strip():
         print("Rapor boş; hiçbir şey kaydedilmedi.")

@@ -48,6 +48,20 @@ uv run python -m futures_analyzer.cli fetch NQ   # veriyi çek (ES ve GC için d
 
 Veritabanı her bilgisayarda ayrıdır. Yeni bir bilgisayarda `fetch` ile veri yeniden çekilir.
 
+### Windows (kişisel bilgisayar)
+
+Bir kez kurulum:
+
+1. **Git**: https://git-scm.com/download/win (varsayılan seçeneklerle kurun).
+2. **Docker Desktop**: https://www.docker.com/products/docker-desktop/ — kurulumda WSL 2 seçili kalsın; bilgisayarı yeniden başlatmanız istenebilir. Docker Desktop'ı açıp "Engine running" yazısını görün.
+3. **uv**: PowerShell'i açıp şunu çalıştırın, sonra PowerShell'i kapatıp yeniden açın:
+   `powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"`
+4. Projeyi indirin (repo private olduğu için tarayıcıda GitHub girişi istenir):
+   `git clone https://github.com/UnDaley/futures-analyzer.git`
+5. `futures-analyzer\windows\install_shortcut.bat` dosyasına çift tıklayın. Masaüstüne ve Başlat menüsüne **Futures Analyzer** kısayolu eklenir.
+
+Günlük kullanım: Docker Desktop açıkken masaüstündeki **Futures Analyzer** kısayoluna çift tıklayın; gerisi Linux'takiyle aynı (dashboard tarayıcıda açılır). İlk açılışta Python paketlerinin kurulması ve verilerin çekilmesi birkaç dakika sürer. Windows Güvenlik Duvarı izin sorarsa "İzin ver" deyin.
+
 ### 42 bilgisayarlarında
 
 Home kotası küçük olduğu için Python ortamı `/goinfre`'de tutulur.

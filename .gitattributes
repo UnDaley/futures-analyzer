@@ -1,0 +1,4 @@
+# Windows betikleri Windows satır sonuyla, Linux betikleri Linux satır sonuyla kalsın
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
