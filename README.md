@@ -10,21 +10,30 @@ Faz 1 (piyasa verisi toplama) tamamlandı.
 
 ## Kurulum
 
-42 bilgisayarlarında home kotası küçük olduğu için Python ortamı `/goinfre`'de tutulur.
-`~/.zshrc` dosyasında şu iki satır olmalı:
+Gerekenler: Git, [uv](https://docs.astral.sh/uv/getting-started/installation/), Docker.
+
+```bash
+git clone https://github.com/UnDaley/futures-analyzer.git
+cd futures-analyzer
+cp .env.example .env
+docker compose up -d        # PostgreSQL
+uv sync                     # paketler
+uv run python -m futures_analyzer.cli fetch NQ   # veriyi çek (ES ve GC için de)
+```
+
+Veritabanı her bilgisayarda ayrıdır. Yeni bir bilgisayarda `fetch` ile veri yeniden çekilir.
+
+### 42 bilgisayarlarında
+
+Home kotası küçük olduğu için Python ortamı `/goinfre`'de tutulur.
+`uv sync`'ten önce `~/.zshrc` dosyasına şu iki satırı ekleyin ve yeni bir terminal açın:
 
 ```bash
 export UV_CACHE_DIR=/goinfre/$USER/.uv-cache
 export UV_PROJECT_ENVIRONMENT=/goinfre/$USER/venvs/futures-analyzer
 ```
 
-`/goinfre` bilgisayara özeldir. Başka bir bilgisayarda ortamı yeniden kurmak için `uv sync` yeterlidir.
-
-```bash
-cp .env.example .env
-docker compose up -d        # PostgreSQL
-uv sync                     # paketler
-```
+`/goinfre` bilgisayara özeldir. Başka bir 42 bilgisayarında `uv sync` ortamı yeniden kurar.
 
 ## Kullanım
 
