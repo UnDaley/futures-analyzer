@@ -3,6 +3,7 @@
 - levels: destek / direnç zone'ları ve referans seviyeler (Faz 4)
 - sessions: Asya / Londra / New York high-low, NY açılışı (Faz 5)
 - liquidity: BSL/SSL, sweep, FVG, displacement, order block, premium/discount (Faz 6)
+- macro: faizler, enflasyon, istihdam, büyüme (Faz 7)
 - timeframes: her zaman dilimi için
     - technical: gösterge değerleri (Faz 2)
     - structure: swing'ler, HH/HL, BOS/CHoCH (Faz 3)
@@ -17,6 +18,8 @@ from futures_analyzer.indicators.engine import add_indicators, latest_snapshot
 from futures_analyzer.instruments import get_instrument
 from futures_analyzer.levels.engine import levels_snapshot
 from futures_analyzer.liquidity.engine import liquidity_snapshot
+from futures_analyzer.macro.engine import macro_snapshot
+from futures_analyzer.macro.ingest import load_macro
 from futures_analyzer.market_time import drop_incomplete_last_bar
 from futures_analyzer.sessions.engine import session_levels, sessions_snapshot
 from futures_analyzer.structure.engine import structure_snapshot
@@ -50,5 +53,6 @@ def market_snapshot(db: Engine, symbol: str) -> dict:
         "sessions": sessions,
         "levels": levels_snapshot(candles, instrument, extra_levels=session_levels(sessions)),
         "liquidity": liquidity_snapshot(candles, price) if price is not None else None,
+        "macro": macro_snapshot(load_macro(db)),
         "timeframes": timeframes,
     }

@@ -79,3 +79,41 @@ def load_candles(engine: Engine, symbol: str, timeframe: str, limit: int | None 
     # SQLite saat dilimini saklamaz; kaydettiğimiz her şey UTC olduğu için UTC kabul ediyoruz.
     df["ts"] = pd.to_datetime(df["ts"], utc=True)
     return df.set_index("ts").sort_index()
+
+
+# --- Makro seriler (FRED) ---
+
+macro_table = Table(
+    "macro_series",
+    metadata,
+    Column("series_id", String(32), primary_key=True),
+    Column("date", DateTime, primary_key=True),
+    Column("value", Float, nullable=False),
+)
+
+
+def save_macro_series(engine: Engine, series_id: str, series: pd.Series) -> int:
+    """Makro seriyi kaydeder (varsa günceller). Kaydedilen satır sayısını döndürür."""
+    if series.empty:
+        return 0
+    rows = [{"series_id": series_id, "date": date.to_pydatetime(), "value": float(value)} for date, value in series.items()]
+    dialect = postgresql if engine.dialect.name == "postgresql" else sqlite
+    stmt = dialect.insert(macro_table)
+    stmt = stmt.on_conflict_do_update(index_elements=["series_id", "date"], set_={"value": stmt.excluded.value})
+    with engine.begin() as conn:
+        conn.execute(stmt, rows)
+    return len(rows)
+
+
+def load_macro_series(engine: Engine, series_id: str) -> pd.Series:
+    query = (
+        select(macro_table.c.date, macro_table.c.value)
+        .where(macro_table.c.series_id == series_id)
+        .order_by(macro_table.c.date)
+    )
+    with engine.connect() as conn:
+        rows = conn.execute(query).all()
+    if not rows:
+        return pd.Series(dtype=float)
+    dates, values = zip(*rows)
+    return pd.Series(values, index=pd.DatetimeIndex(dates, name="date"), dtype=float)

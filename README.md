@@ -12,6 +12,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 4 (destek/direnç) tamamlandı: PDH/PDL, PWH/PWL, seans high/low, VWAP, swing'ler, round number, zone'lar.
 - Faz 5 (seans analizi) tamamlandı: Asya/Londra/New York high-low, NY açılışı, önceki NY high-low.
 - Faz 6 (likidite / price action) tamamlandı: BSL/SSL, equal high/low, sweep, FVG, displacement, order block, premium/discount.
+- Faz 7 (makro) tamamlandı: Fed faizi, 2Y/10Y, eğri, reel faiz, CPI/PPI/PCE, NFP, işsizlik, GSYH (FRED).
 
 ## Kurulum
 
@@ -45,6 +46,7 @@ export UV_PROJECT_ENVIRONMENT=/goinfre/$USER/venvs/futures-analyzer
 ```bash
 uv run python -m futures_analyzer.cli fetch NQ                     # bütün zaman dilimleri
 uv run python -m futures_analyzer.cli fetch NQ --timeframe 1h      # sadece 1h (+ 4h)
+uv run python -m futures_analyzer.cli fetch-macro                  # makro veriler (FRED)
 uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
 uv run python -m futures_analyzer.cli snapshot NQ                 # göstergeler, structure, seviyeler (JSON)
 
@@ -109,3 +111,7 @@ NY açılışı NQ/ES için 09:30, GC için 08:20 (COMEX). Seanslar New York saa
 - Displacement: gövdesi önceki ATR'nin 1,5 katından büyük, gövde/aralık oranı en az %60 olan mum.
 - Order block: displacement'tan önceki son ters renkli mum; fresh / tested, ötesinde kapanış olursa geçersiz.
 - Premium/discount: son 30 adet 4H mumun aralığında fiyatın yüzdesi (>%55 premium, <%45 discount).
+
+## Makro (FRED)
+
+API anahtarı gerekmez. Faizler günlük (genelde 1 iş günü gecikmeli), enflasyon ve istihdam aylık güncellenir; her değerin tarihi snapshot'ta verilir. Enflasyon endeksleri yıllık % değişim (YoY) olarak, NFP aylık değişim (bin kişi) olarak raporlanır. Not: FRED özel User-Agent içeren istekleri reddediyor.
