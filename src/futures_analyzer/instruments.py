@@ -12,12 +12,13 @@ class Instrument:
     name: str          # Okunabilir ad
     yahoo_ticker: str  # yfinance'teki sembol (en yakın vadeli sürekli kontrat)
     tick_size: float   # Fiyatın en küçük adımı
+    round_step: float  # Psikolojik "yuvarlak" fiyat adımı (örn. NQ için 31.000, 31.100)
 
 
 INSTRUMENTS = {
-    "NQ": Instrument("NQ", "E-mini Nasdaq-100", "NQ=F", 0.25),
-    "ES": Instrument("ES", "E-mini S&P 500", "ES=F", 0.25),
-    "GC": Instrument("GC", "Gold", "GC=F", 0.10),
+    "NQ": Instrument("NQ", "E-mini Nasdaq-100", "NQ=F", 0.25, 100),
+    "ES": Instrument("ES", "E-mini S&P 500", "ES=F", 0.25, 25),
+    "GC": Instrument("GC", "Gold", "GC=F", 0.10, 25),
 }
 
 

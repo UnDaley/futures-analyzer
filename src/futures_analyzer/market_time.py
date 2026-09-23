@@ -68,3 +68,13 @@ def drop_incomplete_last_bar(df: pd.DataFrame, timeframe: str, now: pd.Timestamp
     if df.empty or is_bar_complete(df.index[-1], timeframe, now):
         return df
     return df.iloc[:-1]
+
+
+def trading_date(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
+    """Her zaman damgasının ait olduğu işlem günü (New York tarihi, saat 00:00, saat dilimsiz).
+
+    Seans 18:00'de açıldığı için akşam 18:00'den sonrası ertesi günün işlem günüdür.
+    Örn. pazar 19:00 -> pazartesi, pazartesi 16:00 -> pazartesi, pazartesi 18:00 -> salı.
+    """
+    local_start = session_start(index).tz_convert(NEW_YORK).tz_localize(None)
+    return (local_start + pd.Timedelta(hours=24 - SESSION_OPEN_HOUR)).floor("D")
