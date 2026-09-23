@@ -70,7 +70,7 @@ uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
 uv run python -m futures_analyzer.cli snapshot NQ                 # bütün analiz verisi (JSON)
 uv run python -m futures_analyzer.cli report NQ                   # Claude raporu (ANTHROPIC_API_KEY gerekir, kaydedilir)
 uv run python -m futures_analyzer.cli prompt NQ                   # API anahtarı olmadan: claude.ai için prompt dosyası
-uv run python -m futures_analyzer.cli check-report 4 rapor.txt    # claude.ai raporunu kontrol et ve kaydet
+uv run python -m futures_analyzer.cli check-report 4              # claude.ai raporunu yapıştır, kontrol et ve kaydet
 uv run python -m futures_analyzer.cli record                      # analizleri Claude'suz kaydet
 uv run python -m futures_analyzer.cli evaluate                    # kayıtların sonuçlarını ölç ve özetle
 uv run python -m futures_analyzer.cli backtest NQ --days 50 --step 4h --csv nq.csv
@@ -178,8 +178,8 @@ Senaryolar: tetik = en yakın direnç/destek zone'unun kenarı (fiyat bir zone'u
 
 1. `uv run python -m futures_analyzer.cli prompt NQ` analizi kaydeder ve `prompts/NQ_<no>.txt` dosyasını yazar (talimatlar + veri).
 2. Dosyanın içeriğinin tamamını claude.ai'de yeni bir sohbete yapıştırın.
-3. Claude'un raporunu bir metin dosyasına kaydedin, örn. `prompts/rapor.txt`.
-4. `uv run python -m futures_analyzer.cli check-report <no> prompts/rapor.txt` rapordaki fiyatları veriyle karşılaştırır ve raporu analiz kaydına ekler (dashboard'da görünür). Veride olmayan fiyat varsa Claude'a yapıştırılacak düzeltme mesajını yazdırır.
+3. Claude'un cevabını kopyalayın ve `uv run python -m futures_analyzer.cli check-report <no>` komutunu çalıştırıp terminale yapıştırın; bitince yeni satırda Ctrl+D. (Rapor bir dosyadaysa: `check-report <no> dosya.txt`.)
+4. Komut rapordaki fiyatları veriyle karşılaştırır ve raporu analiz kaydına ekler (dashboard'da görünür). Veride olmayan fiyat varsa Claude'a yapıştırılacak düzeltme mesajını yazdırır.
 
 `prompts/` klasörü GitHub'a gönderilmez.
 

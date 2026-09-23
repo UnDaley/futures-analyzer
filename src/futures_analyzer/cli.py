@@ -11,7 +11,7 @@
     python -m futures_analyzer.cli snapshot NQ
     python -m futures_analyzer.cli report NQ                 # Claude raporu (kaydedilir)
     python -m futures_analyzer.cli prompt NQ                 # API anahtarı olmadan: claude.ai için prompt
-    python -m futures_analyzer.cli check-report 12 rapor.txt # claude.ai raporunu kontrol et
+    python -m futures_analyzer.cli check-report 12           # claude.ai raporunu yapıştır ve kontrol et
     python -m futures_analyzer.cli record                    # analizleri Claude'suz kaydet
     python -m futures_analyzer.cli evaluate                  # kayıtların sonuçlarını ölç
     python -m futures_analyzer.cli backtest NQ --days 30 --step 4h
@@ -20,6 +20,7 @@
 import argparse
 import json
 import logging
+import sys
 from pathlib import Path
 
 import pandas as pd
@@ -137,12 +138,25 @@ def cmd_prompt(args: argparse.Namespace) -> None:
     out.write_text(manual_prompt(snapshot), encoding="utf-8")
     print(f"Analiz #{analysis_id} kaydedildi. Prompt dosyası: {out}")
     print("1) Dosyanın içeriğinin tamamını claude.ai'de yeni bir sohbete yapıştırın.")
-    print("2) Claude'un raporunu bir dosyaya kaydedin (örn. rapor.txt).")
-    print(f"3) Kontrol edin: uv run python -m futures_analyzer.cli check-report {analysis_id} rapor.txt")
+    print(f"2) Claude'un cevabını kopyalayın ve şu komutu çalıştırıp terminale yapıştırın (bitince Ctrl+D):")
+    print(f"   uv run python -m futures_analyzer.cli check-report {analysis_id}")
 
 
 def cmd_check_report(args: argparse.Namespace) -> None:
-    text = Path(args.file).read_text(encoding="utf-8")
+    if args.file:
+        path = Path(args.file)
+        if not path.exists():
+            print(f"Dosya bulunamadı: {path}")
+            print("Dosya adını kontrol edin veya dosya vermeden çalıştırıp raporu doğrudan terminale yapıştırın:")
+            print(f"  uv run python -m futures_analyzer.cli check-report {args.id}")
+            raise SystemExit(1)
+        text = path.read_text(encoding="utf-8")
+    else:
+        print("Claude'un raporunu buraya yapıştırın. Bitince yeni bir satırda Ctrl+D tuşlarına basın:")
+        text = sys.stdin.read()
+    if not text.strip():
+        print("Rapor boş; hiçbir şey kaydedilmedi.")
+        raise SystemExit(1)
     try:
         result = check_manual_report(get_engine(), args.id, text)
     except ValueError as error:
@@ -253,7 +267,7 @@ def main() -> None:
 
     check = sub.add_parser("check-report", help="claude.ai'den gelen raporu kontrol et ve analize ekle")
     check.add_argument("id", type=int, help="prompt komutunun verdiği analiz numarası")
-    check.add_argument("file", help="Raporun kaydedildiği metin dosyası")
+    check.add_argument("file", nargs="?", help="Raporun kaydedildiği dosya (verilmezse rapor terminale yapıştırılır)")
     check.set_defaults(func=cmd_check_report)
 
     record = sub.add_parser("record", help="Analizi (Claude olmadan) kaydet; sembol verilmezse hepsi")
