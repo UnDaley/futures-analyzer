@@ -18,6 +18,17 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 10 (senaryo motoru ve skor) tamamlandı: ağırlıklı skor, bullish/bearish/neutral senaryolar.
 - Faz 11 (Claude entegrasyonu) tamamlandı: standart formatta Türkçe rapor, uydurma fiyat kontrolü.
 - Faz 12 (backtest / değerlendirme) tamamlandı: analiz günlüğü, sonuç ölçümü, geçmişe dönük backtest.
+- Faz 13 (dashboard) tamamlandı: grafik, senaryo seviyeleri, skor, olay riski, rapor ve analiz geçmişi.
+
+## Günlük kullanım
+
+```bash
+docker compose up -d
+uv run python -m futures_analyzer.cli fetch-all      # bütün veriyi güncelle (birkaç dakika)
+uv run uvicorn futures_analyzer.api:app              # dashboard: http://localhost:8000
+uv run python -m futures_analyzer.cli record         # analizleri kaydet (sonuç ölçümü için)
+uv run python -m futures_analyzer.cli evaluate       # 1 gün sonra: sonuçları ölç
+```
 
 ## Kurulum
 
@@ -184,3 +195,19 @@ Senaryolar: tetik = en yakın direnç/destek zone'unun kenarı (fiyat bir zone'u
 | GC | %51,4 | %55,7 | %45,7 | %66,1 |
 
 Yorum: NQ ve ES için skorun baseline'a göre anlamlı bir avantajı görünmüyor; GC'deki fark küçük örneklem nedeniyle henüz güvenilir değil. Ağırlıklar ve kurallar bu ölçümlere göre ayarlanmalı.
+
+## Dashboard
+
+`uv run uvicorn futures_analyzer.api:app` ile açılır: http://localhost:8000
+
+- Grafik: TradingView Lightweight Charts (CDN). Mumlar, Python'da hesaplanan EMA 20/50/200 ve seans VWAP'ı, senaryo tetik ve hedef çizgileri. Saatler New York saatidir.
+- Yan panel: skor ve bileşenleri, olay riski, senaryolar, seanslar, destek/direnç zone'ları.
+- "Claude raporu üret" düğmesi raporu üretir ve kaydeder (API anahtarı gerekir).
+- Analiz geçmişi tablosu kayıtlı analizlerin ölçülen sonuçlarını gösterir. Sayfa dakikada bir yenilenir.
+- Derleme adımı gerektirmeyen tek bir HTML dosyasıdır (`src/futures_analyzer/web/dashboard.html`). İleride React / Next.js'e geçilirse aynı API uç noktaları (`/chart`, `/snapshot`, `/analyses`, `/report`) kullanılabilir.
+
+## Bilinçli olarak yapılmayanlar
+
+- Otomatik emir, broker bağlantısı: yok ve eklenmeyecek.
+- Redis: şu an ihtiyaç yok (hesaplar birkaç saniye sürüyor); önbellek gerekirse eklenecek.
+- Gerçek zamanlı veri: yfinance gecikmeli; `DataProvider` arayüzüyle ücretli bir kaynak (örn. Databento) eklenebilir.

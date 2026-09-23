@@ -1,7 +1,11 @@
-"""Mumları veritabanına kaydeder ve okur.
+"""Veritabanı tabloları ve okuma / yazma fonksiyonları.
 
-Tablo: candles (symbol, timeframe, ts) birincil anahtar.
-Aynı mum tekrar kaydedilirse satır çoğalmaz, değerleri güncellenir (upsert).
+- candles: mumlar, (symbol, timeframe, ts) birincil anahtar
+- macro_series: FRED makro serileri
+- economic_events, news_items: ekonomik takvim ve haberler
+- analyses: kaydedilen analizler ve ölçülen sonuçları
+
+Mumlar, makro değerler, olaylar ve haberler tekrar kaydedilirse satır çoğalmaz, güncellenir (upsert).
 Bu sayede henüz kapanmamış son mum da sonraki çekişte düzelir.
 """
 

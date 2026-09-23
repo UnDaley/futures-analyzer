@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Futures Analyzer</title>
+<script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
+    --up: #16a34a; --down: #dc2626; --neutral: #64748b; --accent: #2563eb; --warn: #b45309;
+    --ema20: #f59e0b; --ema50: #8b5cf6; --ema200: #0ea5e9; --vwap: #db2777;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1218; --panel: #171b23; --text: #e6e9ef; --muted: #98a2b3; --border: #2a303b;
+      --up: #22c55e; --down: #f87171; --neutral: #94a3b8; --accent: #60a5fa; --warn: #fbbf24;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 17px; margin: 0 8px 0 0; }
+  select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
+  button { cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  button:disabled { opacity: .6; cursor: wait; }
+  .note { color: var(--muted); font-size: 12px; }
+  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 16px; }
+  main > section, main > aside { min-width: 0; }  /* geniş tablolar sütunu taşırmasın */
+  @media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 600px) { main { padding: 16px 12px; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
+  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; }
+  #chart { height: 520px; }
+  @media (max-width: 600px) { #chart { height: 360px; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 8px; }
+  .legend span::before { content: ""; display: inline-block; width: 12px; height: 3px; margin-right: 5px; vertical-align: middle; background: var(--c); }
+  .price { font-size: 26px; font-weight: 650; }
+  .bias { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 13px; }
+  .bullish { color: var(--up); } .bearish { color: var(--down); } .neutral { color: var(--neutral); }
+  .bias.bullish { background: color-mix(in srgb, var(--up) 15%, transparent); }
+  .bias.bearish { background: color-mix(in srgb, var(--down) 15%, transparent); }
+  .bias.neutral { background: color-mix(in srgb, var(--neutral) 15%, transparent); }
+  .comp { display: grid; grid-template-columns: 90px 1fr 48px; gap: 8px; align-items: center; margin: 5px 0; font-size: 13px; }
+  .bar { position: relative; height: 8px; background: var(--bg); border-radius: 4px; }
+  .bar i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+  .bar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border); }
+  .scenario { border-left: 3px solid var(--border); padding: 4px 0 4px 10px; margin: 10px 0; }
+  .scenario.bullish { border-color: var(--up); } .scenario.bearish { border-color: var(--down); }
+  .scenario b { color: var(--text); }
+  .scenario div { color: var(--text); font-size: 13px; }
+  .warn { color: var(--warn); font-weight: 600; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 500; }
+  .num { text-align: right; font-variant-numeric: tabular-nums; }
+  pre { white-space: pre-wrap; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; max-height: 520px; overflow: auto; }
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; }
+  .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow-x: auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Futures Analyzer</h1>
+  <label>Kontrat <select id="symbol"><option>NQ</option><option>ES</option><option>GC</option></select></label>
+  <label>Zaman dilimi <select id="tf">
+    <option value="5m">5M</option><option value="15m" selected>15M</option><option value="1h">1H</option>
+    <option value="4h">4H</option><option value="1d">1D</option>
+  </select></label>
+  <button id="refresh">Yenile</button>
+  <button id="report" class="primary">Claude raporu üret</button>
+  <span class="note" id="status"></span>
+  <span class="note" style="margin-left:auto">Analiz asistanıdır; işlem açmaz, tavsiye vermez. Veri 10-15 dk gecikmeli.</span>
+</header>
+
+<main>
+  <section>
+    <div class="card">
+      <div id="chart"></div>
+      <div class="legend">
+        <span style="--c: var(--ema20)">EMA 20</span><span style="--c: var(--ema50)">EMA 50</span>
+        <span style="--c: var(--ema200)">EMA 200</span><span style="--c: var(--vwap)">VWAP (gün içi)</span>
+        <span style="--c: var(--up)">Bullish tetik / hedef</span><span style="--c: var(--down)">Bearish tetik / hedef</span>
+      </div>
+    </div>
+    <div class="card">
+      <h2>Son Claude raporu</h2>
+      <div id="report-meta" class="note"></div>
+      <pre id="report-text">Henüz rapor yok.</pre>
+    </div>
+    <div class="card">
+      <h2>Analiz geçmişi ve sonuçları</h2>
+      <div class="table-wrap"><table id="history"></table></div>
+    </div>
+  </section>
+
+  <aside>
+    <div class="card">
+      <h2>Durum</h2>
+      <div class="price" id="price">-</div>
+      <div style="margin:6px 0 10px"><span id="bias" class="bias neutral">-</span> <span id="score" class="note"></span></div>
+      <div id="components"></div>
+      <p class="note" id="score-note"></p>
+    </div>
+    <div class="card"><h2>Olay riski</h2><div id="event"></div></div>
+    <div class="card"><h2>Senaryolar</h2><div id="scenarios"></div></div>
+    <div class="card"><h2>Seanslar</h2><dl class="kv" id="sessions"></dl></div>
+    <div class="card"><h2>Destek / direnç</h2><div id="levels"></div></div>
+  </aside>
+</main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+const fmt = (v) => (v === null || v === undefined) ? "-" : String(v);
+const nyTime = (seconds, withDate = true) => new Date(seconds * 1000).toLocaleString("tr-TR", {
+  timeZone: "America/New_York", hour: "2-digit", minute: "2-digit",
+  ...(withDate ? { day: "2-digit", month: "2-digit" } : {}),
+});
+
+// Küçük yardımcı: metin içeriğiyle eleman oluşturur (HTML olarak yorumlanmaz)
+function el(tag, text, className) {
+  const node = document.createElement(tag);
+  if (text !== undefined) node.textContent = text;
+  if (className) node.className = className;
+  return node;
+}
+
+async function getJSON(url, options) {
+  const response = await fetch(url, options);
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.detail || `HTTP ${response.status}`);
+  return body;
+}
+
+// --- Grafik ---
+const chart = LightweightCharts.createChart($("chart"), {
+  autoSize: true,
+  layout: { background: { color: "transparent" }, textColor: css("--muted") },
+  grid: { vertLines: { color: css("--border") }, horzLines: { color: css("--border") } },
+  timeScale: { timeVisible: true, tickMarkFormatter: (t) => nyTime(t, false) },
+  localization: { timeFormatter: (t) => nyTime(t) + " NY" },
+  rightPriceScale: { borderColor: css("--border") },
+});
+const candles = chart.addCandlestickSeries({
+  upColor: css("--up"), downColor: css("--down"), wickUpColor: css("--up"), wickDownColor: css("--down"), borderVisible: false,
+});
+const volume = chart.addHistogramSeries({ priceScaleId: "", priceFormat: { type: "volume" }, color: css("--border") });
+volume.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
+// Gösterge çizgileri dikey ölçeği etkilemez (örn. uzaktaki EMA 200 mumları ezmesin)
+const lineOptions = { priceLineVisible: false, lastValueVisible: false, autoscaleInfoProvider: () => null };
+const lines = {
+  ema_20: chart.addLineSeries({ ...lineOptions, color: css("--ema20"), lineWidth: 1 }),
+  ema_50: chart.addLineSeries({ ...lineOptions, color: css("--ema50"), lineWidth: 1 }),
+  ema_200: chart.addLineSeries({ ...lineOptions, color: css("--ema200"), lineWidth: 2 }),
+  vwap: chart.addLineSeries({ ...lineOptions, color: css("--vwap"), lineWidth: 1, lineStyle: 2 }),
+};
+let priceLines = [];
+
+function drawChart(data) {
+  candles.setData(data.bars);
+  volume.setData(data.bars.map((b) => ({ time: b.time, value: b.volume })));
+  for (const [name, series] of Object.entries(lines)) series.setData(data.lines[name] || []);
+}
+
+function drawScenarioLines(scenarios) {
+  priceLines.forEach((line) => candles.removePriceLine(line));
+  priceLines = [];
+  if (!scenarios) return;
+  const add = (price, color, title, style) => priceLines.push(candles.createPriceLine({
+    price, color, title, lineWidth: 1, lineStyle: style, axisLabelVisible: true,
+  }));
+  const bull = scenarios.bullish, bear = scenarios.bearish;
+  add(bull.trigger_level, css("--up"), "bull tetik", 2);
+  bull.targets.forEach((t, i) => add(t.level, css("--up"), `bull hedef ${i + 1}`, 1));
+  add(bear.trigger_level, css("--down"), "bear tetik", 2);
+  bear.targets.forEach((t, i) => add(t.level, css("--down"), `bear hedef ${i + 1}`, 1));
+}
+
+// --- Yan panel ---
+function drawScore(snapshot) {
+  const score = snapshot.score;
+  $("price").textContent = `${snapshot.instrument} ${fmt(snapshot.price)}`;
+  $("bias").textContent = score.bias;
+  $("bias").className = `bias ${score.bias}`;
+  $("score").textContent = `skor ${score.total} · kapsam ${score.coverage}/100`;
+  $("score-note").textContent = score.note;
+
+  const box = $("components");
+  box.replaceChildren();
+  for (const [name, c] of Object.entries(score.components)) {
+    const row = el("div", undefined, "comp");
+    row.title = c.reason;
+    row.append(el("span", name));
+    const bar = el("div", undefined, "bar");
+    const fill = el("i");
+    const width = Math.abs(c.value) * 50;
+    fill.style.left = c.value >= 0 ? "50%" : `${50 - width}%`;
+    fill.style.width = `${width}%`;
+    fill.style.background = c.value >= 0 ? css("--up") : css("--down");
+    if (!c.available) bar.style.opacity = "0.35";
+    bar.append(fill);
+    row.append(bar, el("span", `${c.points > 0 ? "+" : ""}${c.points}`, "num"));
+    box.append(row);
+  }
+}
+
+function drawScenarios(scenarios) {
+  const box = $("scenarios");
+  box.replaceChildren();
+  if (!scenarios) { box.append(el("div", "Senaryo üretilemedi (seviye verisi yok).", "note")); return; }
+  for (const side of ["bullish", "bearish"]) {
+    const s = scenarios[side];
+    const block = el("div", undefined, `scenario ${side}`);
+    block.append(el("b", `${side.toUpperCase()}${scenarios.primary === side ? " (birincil)" : ""}`));
+    block.append(el("div", `Tetik: ${s.trigger}`));
+    block.append(el("div", `Onay: ${s.confirmation}`));
+    block.append(el("div", `Hedefler: ${s.targets.map((t) => t.level).join(", ") || "yok"}`));
+    block.append(el("div", `Invalidation: ${s.invalidation}`));
+    box.append(block);
+  }
+  const neutral = el("div", undefined, "scenario");
+  neutral.append(el("b", `NEUTRAL${scenarios.primary === "neutral" ? " (birincil)" : ""}`), el("div", scenarios.neutral.description));
+  box.append(neutral);
+}
+
+function drawEvent(snapshot) {
+  const box = $("event");
+  box.replaceChildren();
+  const calendar = snapshot.news && snapshot.news.calendar;
+  const risk = calendar && calendar.event_risk;
+  if (!risk) { box.append(el("div", "Takvimde yaklaşan yüksek/orta etkili ABD verisi yok (veya takvim alınamadı).", "note")); return; }
+  box.append(el("div", `${risk.title} · ${risk.time_ny} NY · ${risk.minutes_until} dk sonra`, risk.imminent ? "warn" : ""));
+  box.append(el("div", risk.why_it_matters, "note"));
+}
+
+function drawSessions(sessions) {
+  const box = $("sessions");
+  box.replaceChildren();
+  if (!sessions) return;
+  const add = (key, value) => box.append(el("dt", key), el("dd", value));
+  add("Şu an", sessions.current_session);
+  for (const name of ["asia", "london", "new_york"]) {
+    const s = sessions[name];
+    add(name, s ? `${s.high} / ${s.low}` : "başlamadı");
+  }
+  add("NY açılış", `${fmt(sessions.ny_open.price)} (${sessions.ny_open.time_ny})`);
+  if (sessions.previous_new_york) add("Önceki NY", `${sessions.previous_new_york.high} / ${sessions.previous_new_york.low}`);
+}
+
+function drawLevels(levels) {
+  const box = $("levels");
+  box.replaceChildren();
+  if (!levels) return;
+  const table = el("table");
+  const head = el("tr");
+  head.append(el("th", "Zone"), el("th", "Mesafe", "num"), el("th", "Kaynaklar"));
+  table.append(head);
+  const rows = [
+    ...levels.resistance.slice(0, 4).reverse().map((z) => [z, "bearish"]),
+    ...levels.at_price.map((z) => [z, "neutral"]),
+    ...levels.support.slice(0, 4).map((z) => [z, "bullish"]),
+  ];
+  for (const [zone, cls] of rows) {
+    const tr = el("tr");
+    tr.append(
+      el("td", zone.low === zone.high ? `${zone.low}` : `${zone.low} - ${zone.high}`, cls),
+      el("td", `${zone.distance}`, "num"),
+      el("td", zone.sources.join(", "), "note"),
+    );
+    table.append(tr);
+  }
+  box.append(table);
+}
+
+// --- Rapor ve geçmiş ---
+function drawHistory(rows) {
+  const table = $("history");
+  table.replaceChildren();
+  const head = el("tr");
+  ["Zaman (NY)", "Fiyat", "Bias", "Skor", "4s %", "1g %", "Yön doğru?", "Senaryo", "Rapor"].forEach((h, i) =>
+    head.append(el("th", h, i > 0 && i < 7 && i !== 2 ? "num" : "")));
+  table.append(head);
+  for (const row of rows) {
+    const ev = row.evaluation || {};
+    const ret = ev.returns || {};
+    const tr = el("tr");
+    tr.append(
+      el("td", nyTime(Date.parse(row.as_of) / 1000)),
+      el("td", fmt(row.price), "num"),
+      el("td", row.bias, row.bias),
+      el("td", fmt(row.score_total), "num"),
+      el("td", fmt(ret["4h"]), "num"),
+      el("td", fmt(ret["1d"]), "num"),
+      el("td", ev.direction_correct === undefined || ev.direction_correct === null ? "-" : (ev.direction_correct ? "evet" : "hayır"), "num"),
+      el("td", ev.scenario ? ev.scenario.result : "bekliyor"),
+      el("td", row.report_text ? (row.report_validated ? "var" : "var (doğrulanmadı)") : "-"),
+    );
+    table.append(tr);
+  }
+  if (!rows.length) {
+    const tr = el("tr");
+    const td = el("td", "Kayıt yok. `record` veya `report` komutuyla analiz kaydedin.", "note");
+    td.colSpan = 9;
+    tr.append(td);
+    table.append(tr);
+  }
+
+  const latest = rows.find((r) => r.report_text);
+  $("report-text").textContent = latest ? latest.report_text : "Henüz rapor yok.";
+  $("report-meta").textContent = latest
+    ? `${nyTime(Date.parse(latest.as_of) / 1000)} NY · ${latest.report_model}${latest.report_validated ? "" : " · UYARI: veride olmayan sayılar içeriyor"}`
+    : "";
+}
+
+// --- Yükleme ---
+async function load() {
+  const symbol = $("symbol").value, tf = $("tf").value;
+  $("status").textContent = "yükleniyor...";
+  try {
+    const [snapshot, chartData, history] = await Promise.all([
+      getJSON(`/snapshot?symbol=${symbol}`),
+      getJSON(`/chart?symbol=${symbol}&tf=${tf}&limit=300`),
+      getJSON(`/analyses?symbol=${symbol}&limit=15`),
+    ]);
+    drawChart(chartData);
+    drawScenarioLines(snapshot.scenarios);
+    drawScore(snapshot);
+    drawEvent(snapshot);
+    drawScenarios(snapshot.scenarios);
+    drawSessions(snapshot.sessions);
+    drawLevels(snapshot.levels);
+    drawHistory(history);
+    $("status").textContent = `güncellendi ${new Date().toLocaleTimeString("tr-TR")}`;
+  } catch (error) {
+    $("status").textContent = `hata: ${error.message}`;
+  }
+}
+
+$("refresh").addEventListener("click", load);
+$("symbol").addEventListener("change", load);
+$("tf").addEventListener("change", load);
+$("report").addEventListener("click", async () => {
+  const button = $("report");
+  button.disabled = true;
+  $("status").textContent = "Claude raporu hazırlanıyor (1-2 dk sürebilir)...";
+  try {
+    await getJSON(`/report?symbol=${$("symbol").value}`, { method: "POST" });
+    await load();
+  } catch (error) {
+    $("status").textContent = `rapor üretilemedi: ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+load();
+setInterval(load, 60_000);  // dakikada bir yenile (veri zaten gecikmeli)
+</script>
+</body>
+</html>
