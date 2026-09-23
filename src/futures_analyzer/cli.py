@@ -6,6 +6,8 @@
     python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
     python -m futures_analyzer.cli fetch-intermarket
     python -m futures_analyzer.cli fetch-macro
+    python -m futures_analyzer.cli fetch-news
+    python -m futures_analyzer.cli fetch-all                 # hepsi
     python -m futures_analyzer.cli snapshot NQ
 """
 
@@ -20,8 +22,9 @@ from futures_analyzer.data.ingest import FETCH_TIMEFRAMES, ingest
 from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.data.providers.yahoo import YahooProvider
 from futures_analyzer.data.storage import create_tables, get_engine, load_candles
-from futures_analyzer.instruments import INTERMARKET_ASSETS, get_instrument
+from futures_analyzer.instruments import INSTRUMENTS, INTERMARKET_ASSETS, get_instrument
 from futures_analyzer.macro.ingest import ingest_macro
+from futures_analyzer.news.engine import ingest_news
 
 
 def cmd_fetch(args: argparse.Namespace) -> None:
@@ -54,6 +57,22 @@ def cmd_fetch_macro(args: argparse.Namespace) -> None:
     create_tables(engine)
     for name, count in ingest_macro(engine).items():
         print(f"{name}: {'HATA' if count < 0 else f'{count} değer kaydedildi'}")
+
+
+def cmd_fetch_news(args: argparse.Namespace) -> None:
+    engine = get_engine()
+    create_tables(engine)
+    saved = ingest_news(engine)
+    print(f"{saved['news']} haber, {saved['events']} takvim olayı kaydedildi")
+
+
+def cmd_fetch_all(args: argparse.Namespace) -> None:
+    """Bütün kontratlar, ilişkili varlıklar, makro veriler ve haberler."""
+    for symbol in INSTRUMENTS:
+        cmd_fetch(argparse.Namespace(symbol=symbol, timeframe=None))
+    cmd_fetch_intermarket(args)
+    cmd_fetch_macro(args)
+    cmd_fetch_news(args)
 
 
 def cmd_show(args: argparse.Namespace) -> None:
@@ -89,6 +108,12 @@ def main() -> None:
 
     macro = sub.add_parser("fetch-macro", help="Makro verileri FRED'den çek")
     macro.set_defaults(func=cmd_fetch_macro)
+
+    news = sub.add_parser("fetch-news", help="Haberleri ve ekonomik takvimi çek")
+    news.set_defaults(func=cmd_fetch_news)
+
+    fetch_all = sub.add_parser("fetch-all", help="Her şeyi çek: kontratlar, intermarket, makro, haberler")
+    fetch_all.set_defaults(func=cmd_fetch_all)
 
     show = sub.add_parser("show", help="Kayıtlı son mumları göster")
     show.add_argument("symbol")

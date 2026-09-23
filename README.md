@@ -14,6 +14,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 6 (likidite / price action) tamamlandı: BSL/SSL, equal high/low, sweep, FVG, displacement, order block, premium/discount.
 - Faz 7 (makro) tamamlandı: Fed faizi, 2Y/10Y, eğri, reel faiz, CPI/PPI/PCE, NFP, işsizlik, GSYH (FRED).
 - Faz 8 (intermarket) tamamlandı: ES/NQ/YM/RTY/DXY/US10Y/US02Y/VIX (NQ, ES), DXY/US10Y/reel faiz/SI (GC), korelasyon, SMT.
+- Faz 9 (haber ve ekonomik takvim) tamamlandı: olay riski, yeni açıklanan veriler, resmi kaynaklardan haberler.
 
 ## Kurulum
 
@@ -49,6 +50,8 @@ uv run python -m futures_analyzer.cli fetch NQ                     # bütün zam
 uv run python -m futures_analyzer.cli fetch NQ --timeframe 1h      # sadece 1h (+ 4h)
 uv run python -m futures_analyzer.cli fetch-macro                  # makro veriler (FRED)
 uv run python -m futures_analyzer.cli fetch-intermarket            # YM, RTY, DXY, US10Y, VIX, SI (1h)
+uv run python -m futures_analyzer.cli fetch-news                   # haberler + ekonomik takvim
+uv run python -m futures_analyzer.cli fetch-all                    # hepsini tek seferde çek
 uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
 uv run python -m futures_analyzer.cli snapshot NQ                 # göstergeler, structure, seviyeler (JSON)
 
@@ -121,3 +124,11 @@ API anahtarı gerekmez. Faizler günlük (genelde 1 iş günü gecikmeli), enfla
 ## Intermarket
 
 Her ilişkili varlığın günlük değişimi (faizlerde baz puan) önceki işlem günü kapanışına göre hesaplanır ve beklenen ilişkiye (+1 aynı yön, -1 ters yön) göre kontratın hareketini doğrulayıp (`confirms`) doğrulamadığı (`diverges`) belirtilir. `correlation_20d` ilişkinin gerçekten sürüp sürmediğini gösterir. SMT: eş varlıklardan (NQ-ES, GC-SI) biri önceki gün high/low'unu alıp diğeri alamadıysa uyumsuzluk işaretlenir. 2 yıllık faiz ve reel faiz FRED'den gelir (1 iş günü gecikmeli olabilir, tarihi belirtilir).
+
+## Haber ve ekonomik takvim
+
+- Takvim: faireconomy.media (Forex Factory) haftalık JSON, sadece ABD'nin yüksek/orta etkili olayları. Resmi değildir; saatte bir güncellenir ve sık istekleri geçici olarak reddeder (HTTP 429), bu durumda veritabanındaki son takvim kullanılır. `calendar_manual.json` dosyasına aynı biçimde elle olay eklenebilir.
+- `event_risk`: en yakın yüksek etkili olay, kaç dakika kaldığı ve neden önemli olduğu. 60 dakikadan azsa `imminent: true`.
+- Haberler: Fed basın açıklamaları, Fed konuşmaları, BEA (RSS). BLS ve CNBC otomatik erişimi engelliyor. Yeni kaynak `news/feeds.py` içindeki `FEEDS` sözlüğüne eklenebilir.
+- Haber etkisi başlıktaki anahtar kelimelere göre kaba bir sınıflandırmadır (`confidence: low`); yönü belirsiz olanlar `unclear` olarak işaretlenir.
+- Siteler User-Agent başlığına farklı tepki verdiği için bütün istekler `http.py` üzerinden yapılır.

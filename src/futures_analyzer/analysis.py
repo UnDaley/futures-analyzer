@@ -5,6 +5,7 @@
 - liquidity: BSL/SSL, sweep, FVG, displacement, order block, premium/discount (Faz 6)
 - macro: faizler, enflasyon, istihdam, büyüme (Faz 7)
 - intermarket: ilişkili varlıklarla uyum, korelasyon, SMT (Faz 8)
+- news: ekonomik takvim / olay riski ve resmi kaynaklardan haberler (Faz 9)
 - timeframes: her zaman dilimi için
     - technical: gösterge değerleri (Faz 2)
     - structure: swing'ler, HH/HL, BOS/CHoCH (Faz 3)
@@ -23,6 +24,7 @@ from futures_analyzer.liquidity.engine import liquidity_snapshot
 from futures_analyzer.macro.engine import macro_snapshot
 from futures_analyzer.macro.ingest import load_macro
 from futures_analyzer.market_time import drop_incomplete_last_bar
+from futures_analyzer.news.engine import news_snapshot
 from futures_analyzer.sessions.engine import session_levels, sessions_snapshot
 from futures_analyzer.structure.engine import structure_snapshot
 
@@ -62,5 +64,6 @@ def market_snapshot(db: Engine, symbol: str) -> dict:
         "liquidity": liquidity_snapshot(candles, price) if price is not None else None,
         "macro": macro_snapshot(macro_series),
         "intermarket": intermarket_snapshot(instrument.symbol, hourly_by_symbol, macro_series),
+        "news": news_snapshot(db, instrument.symbol),
         "timeframes": timeframes,
     }

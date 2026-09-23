@@ -6,7 +6,7 @@ Bu sayede henüz kapanmamış son mum da sonraki çekişte düzelir.
 """
 
 import pandas as pd
-from sqlalchemy import Column, DateTime, Engine, Float, MetaData, String, Table, create_engine, select
+from sqlalchemy import JSON, Column, DateTime, Engine, Float, MetaData, String, Table, create_engine, select
 from sqlalchemy.dialects import postgresql, sqlite
 
 from futures_analyzer.config import settings
@@ -117,3 +117,68 @@ def load_macro_series(engine: Engine, series_id: str) -> pd.Series:
         return pd.Series(dtype=float)
     dates, values = zip(*rows)
     return pd.Series(values, index=pd.DatetimeIndex(dates, name="date"), dtype=float)
+
+
+# --- Ekonomik takvim ve haberler ---
+
+events_table = Table(
+    "economic_events",
+    metadata,
+    Column("title", String(200), primary_key=True),
+    Column("ts", DateTime(timezone=True), primary_key=True),
+    Column("impact", String(16), nullable=False),
+    Column("forecast", String(32)),
+    Column("previous", String(32)),
+)
+
+news_table = Table(
+    "news_items",
+    metadata,
+    Column("id", String(32), primary_key=True),
+    Column("ts", DateTime(timezone=True), nullable=False),
+    Column("source", String(64), nullable=False),
+    Column("title", String(500), nullable=False),
+    Column("link", String(500)),
+    Column("analysis", JSON),
+)
+
+
+def _upsert(engine: Engine, table: Table, rows: list[dict], keys: list[str]) -> int:
+    if not rows:
+        return 0
+    dialect = postgresql if engine.dialect.name == "postgresql" else sqlite
+    stmt = dialect.insert(table)
+    update = {c.name: stmt.excluded[c.name] for c in table.columns if c.name not in keys}
+    stmt = stmt.on_conflict_do_update(index_elements=keys, set_=update)
+    with engine.begin() as conn:
+        conn.execute(stmt, rows)
+    return len(rows)
+
+
+def save_events(engine: Engine, events: list[dict]) -> int:
+    rows = [{**e, "ts": e["ts"].to_pydatetime()} for e in events]
+    return _upsert(engine, events_table, rows, ["title", "ts"])
+
+
+def load_events(engine: Engine) -> list[dict]:
+    with engine.connect() as conn:
+        rows = conn.execute(select(events_table).order_by(events_table.c.ts)).mappings().all()
+    return [{**row, "ts": _as_utc(row["ts"])} for row in rows]
+
+
+def save_news(engine: Engine, items: list[dict]) -> int:
+    rows = [{**item, "ts": item["ts"].to_pydatetime()} for item in items]
+    return _upsert(engine, news_table, rows, ["id"])
+
+
+def load_news(engine: Engine, since: pd.Timestamp) -> list[dict]:
+    query = select(news_table).where(news_table.c.ts >= since.to_pydatetime()).order_by(news_table.c.ts.desc())
+    with engine.connect() as conn:
+        rows = conn.execute(query).mappings().all()
+    return [{**row, "ts": _as_utc(row["ts"])} for row in rows]
+
+
+def _as_utc(value) -> pd.Timestamp:
+    """SQLite saat dilimini saklamaz; kaydettiğimiz her şey UTC olduğu için UTC kabul ediyoruz."""
+    ts = pd.Timestamp(value)
+    return ts.tz_localize("UTC") if ts.tz is None else ts.tz_convert("UTC")

@@ -5,9 +5,10 @@ yayınlandıkları tarihte güncellenir. Her değerin tarihi snapshot'ta ayrıca
 """
 
 import io
-import urllib.request
 
 import pandas as pd
+
+from futures_analyzer.http import get_text
 
 FRED_CSV_URL = "https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}&cosd={start}"
 
@@ -32,9 +33,7 @@ SERIES = {
 
 def fetch_fred_series(series_id: str, start: str = "2018-01-01") -> pd.Series:
     url = FRED_CSV_URL.format(series_id=series_id, start=start)
-    # Not: FRED özel User-Agent içeren istekleri reddediyor; Python'un varsayılanı kabul ediliyor.
-    with urllib.request.urlopen(url, timeout=20) as response:
-        return parse_fred_csv(response.read().decode("utf-8"))
+    return parse_fred_csv(get_text(url))
 
 
 def parse_fred_csv(text: str) -> pd.Series:
