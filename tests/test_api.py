@@ -94,3 +94,55 @@ def test_report_without_api_key_returns_503(client, engine, monkeypatch):
 
     assert response.status_code == 503
     assert "ANTHROPIC_API_KEY" in response.json()["detail"]
+
+
+def test_refresh_endpoints_run_in_background(client, engine, monkeypatch):
+    import time
+
+    from futures_analyzer import api
+    from futures_analyzer.refresh import RefreshJob
+
+    def fake_refresh(engine, log):
+        log("NQ 1h: 10 mum")
+        return []
+
+    monkeypatch.setattr(api, "refresh_job", RefreshJob(lambda: engine, refresh=fake_refresh))
+
+    assert client.post("/refresh").json()["started"] is True
+    for _ in range(50):
+        status = client.get("/refresh/status").json()
+        if not status["running"]:
+            break
+        time.sleep(0.05)
+    assert status["running"] is False
+    assert status["log"] == ["NQ 1h: 10 mum"]
+    assert status["errors"] == []
+
+
+def test_prompt_and_check_report_flow(client, engine):
+    save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
+
+    prompt = client.post("/prompt", params={"symbol": "NQ"}).json()
+    assert "<market_data>" in prompt["text"]
+
+    result = client.post("/check-report", json={"id": prompt["id"], "text": "Rapor: fiyat verisi yok."}).json()
+    assert result["validated"] is True
+    assert client.post("/check-report", json={"id": 999, "text": "x"}).status_code == 404
+    assert client.post("/check-report", json={"id": prompt["id"], "text": "  "}).status_code == 400
+
+
+def test_record_and_evaluate_endpoints(client, engine):
+    save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
+
+    saved = client.post("/record", params={"symbol": "NQ"}).json()
+    result = client.post("/evaluate", params={"symbol": "NQ"}).json()
+
+    assert saved[0]["instrument"] == "NQ"
+    assert result["summary"]["evaluated"] == 0  # 5m veri yok, sonuç henüz ölçülemez
+
+
+def test_empty_database_gives_friendly_message(client):
+    response = client.get("/snapshot", params={"symbol": "NQ"})
+
+    assert response.status_code == 409
+    assert "Henüz veri yok" in response.json()["detail"]

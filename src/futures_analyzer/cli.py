@@ -38,6 +38,7 @@ from futures_analyzer.data.storage import create_tables, get_engine, load_analys
 from futures_analyzer.instruments import INSTRUMENTS, INTERMARKET_ASSETS, get_instrument
 from futures_analyzer.macro.ingest import ingest_macro
 from futures_analyzer.news.engine import ingest_news
+from futures_analyzer.refresh import refresh_all
 
 
 def cmd_fetch(args: argparse.Namespace) -> None:
@@ -80,12 +81,9 @@ def cmd_fetch_news(args: argparse.Namespace) -> None:
 
 
 def cmd_fetch_all(args: argparse.Namespace) -> None:
-    """Bütün kontratlar, ilişkili varlıklar, makro veriler ve haberler."""
-    for symbol in INSTRUMENTS:
-        cmd_fetch(argparse.Namespace(symbol=symbol, timeframe=None))
-    cmd_fetch_intermarket(args)
-    cmd_fetch_macro(args)
-    cmd_fetch_news(args)
+    """Bütün kontratlar, ilişkili varlıklar, makro veriler ve haberler; sonra sonuç ölçümü."""
+    errors = refresh_all(get_engine())
+    print("Tamamlandı." if not errors else f"Tamamlandı, {len(errors)} adımda hata var (yukarıya bakın).")
 
 
 def cmd_show(args: argparse.Namespace) -> None:

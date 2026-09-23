@@ -20,15 +20,18 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 12 (backtest / değerlendirme) tamamlandı: analiz günlüğü, sonuç ölçümü, geçmişe dönük backtest.
 - Faz 13 (dashboard) tamamlandı: grafik, senaryo seviyeleri, skor, olay riski, rapor ve analiz geçmişi.
 
-## Günlük kullanım
+## Günlük kullanım (terminalsiz)
 
-```bash
-docker compose up -d
-uv run python -m futures_analyzer.cli fetch-all      # bütün veriyi güncelle (birkaç dakika)
-uv run uvicorn futures_analyzer.api:app              # dashboard: http://localhost:8000
-uv run python -m futures_analyzer.cli record         # analizleri kaydet (sonuç ölçümü için)
-uv run python -m futures_analyzer.cli evaluate       # 1 gün sonra: sonuçları ölç
-```
+1. Masaüstündeki **Futures Analyzer** kısayoluna çift tıklayın (veya uygulama menüsünde aratın). Açılan pencere sunucudur; açık kalsın.
+2. Tarayıcıda dashboard açılır (http://localhost:8000). Veriler açılışta ve 15 dakikada bir kendiliğinden güncellenir.
+3. Claude raporu için dashboard'daki 3 adımı izleyin: "Prompt'u kopyala" → claude.ai'ye yapıştır → cevabı kutuya yapıştır → "Kontrol et ve kaydet".
+4. Piyasa açıkken analizler saatte bir otomatik kaydedilir, 1 gün sonra sonuçları otomatik ölçülür. Özet için "Sonuçları ölç".
+5. Kapatmak için sunucu penceresinde Ctrl+C.
+
+Kısayol yoksa (yeni bilgisayar) bir kez: `./install_shortcut.sh`. Kısayol olmadan başlatmak için: `./start.sh`.
+İlk açılışta GNOME "Başlatmaya izin ver" (Allow Launching) sorabilir.
+
+Ayarlar (`.env`): `AUTO_REFRESH_MINUTES=15` (0 = otomatik güncelleme kapalı), `AUTO_RECORD_MINUTES=60` (0 = otomatik kayıt kapalı).
 
 ## Kurulum
 

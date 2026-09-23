@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     # Anahtar boşsa SDK kendi yöntemleriyle arar (ANTHROPIC_API_KEY, `ant auth login` profili...).
     anthropic_model: str = "claude-opus-5"
     anthropic_api_key: str | None = None
+    # Dashboard açıkken verileri kaç dakikada bir otomatik güncellesin (0 = kapalı)
+    auto_refresh_minutes: int = 15
+    # Piyasa açıkken analizler kaç dakikada bir otomatik kaydedilsin (sonuç ölçümü için, 0 = kapalı)
+    auto_record_minutes: int = 60
 
 
 settings = Settings()

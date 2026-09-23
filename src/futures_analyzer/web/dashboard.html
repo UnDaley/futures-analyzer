@@ -18,6 +18,8 @@
     }
   }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  a { color: var(--accent); }
   body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
   header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
   header h1 { font-size: 17px; margin: 0 8px 0 0; }
@@ -59,6 +61,26 @@
   .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; }
   .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
   .table-wrap { overflow-x: auto; }
+  textarea { width: 100%; min-height: 140px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px;
+    border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); resize: vertical; }
+  .steps { display: grid; gap: 10px; }
+  .step { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .step-no { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; }
+  .ok { color: var(--up); font-weight: 600; }
+  .row-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
+  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .banner { margin: 16px 16px 0; padding: 10px 14px; border-radius: 8px; font-weight: 600;
+    background: color-mix(in srgb, var(--warn) 18%, var(--panel)); border: 1px solid var(--warn); color: var(--text); }
+  .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
+  .help { margin: 16px 16px 0; }
+  .help summary { font-size: 14px; color: var(--accent); margin: 0; }
+  .help ol { margin: 8px 0 0; padding-left: 20px; }
+  .help li { margin: 4px 0; }
+  .help dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0 0; font-size: 13px; }
+  .help dt { font-weight: 600; }
+  .help dd { margin: 0; color: var(--muted); }
+  .fresh-warn { color: var(--warn); }
 </style>
 </head>
 <body>
@@ -69,13 +91,41 @@
     <option value="5m">5M</option><option value="15m" selected>15M</option><option value="1h">1H</option>
     <option value="4h">4H</option><option value="1d">1D</option>
   </select></label>
-  <button id="refresh">Yenile</button>
-  <button id="report" class="primary">Claude raporu üret</button>
+  <button id="update-data" class="primary" title="Bütün kontratlar, intermarket, makro ve haberler">Verileri güncelle</button>
+  <span class="note" id="data-status"></span>
   <span class="note" id="status"></span>
   <span class="note" style="margin-left:auto">Analiz asistanıdır; işlem açmaz, tavsiye vermez. Veri 10-15 dk gecikmeli.</span>
 </header>
 
-<main>
+<div id="event-banner" class="banner" hidden></div>
+
+<details class="card help" id="help">
+  <summary>Nasıl kullanılır? · Terimler</summary>
+  <ol>
+    <li><b>Veriler</b> sunucu açılınca ve sonra 15 dakikada bir kendiliğinden güncellenir. Hemen güncellemek için "Verileri güncelle".</li>
+    <li>Üstten <b>kontrat</b> ve <b>zaman dilimi</b> seçin. Sağ panelde skor, olay riski, senaryolar ve seviyeler var.</li>
+    <li><b>Claude raporu</b>: "Prompt'u kopyala" → claude.ai'de yeni sohbete yapıştırın → cevabı kutuya yapıştırıp "Kontrol et ve kaydet".</li>
+    <li>Piyasa açıkken analizler saatte bir <b>otomatik kaydedilir</b> ve 1 gün sonra sonuçları otomatik ölçülür. "Sonuçları ölç" ile özeti görün.</li>
+    <li>Bu sistem <b>işlem açmaz ve tavsiye vermez</b>; skor bir olasılık değil, kanıtların yön uyumudur.</li>
+  </ol>
+  <dl>
+    <dt>Skor</dt><dd>-100 (bearish) ile +100 (bullish) arası; 8 bileşenin ağırlıklı toplamı. |skor| &lt; 15 ise nötr.</dd>
+    <dt>BOS</dt><dd>Break of Structure: fiyatın trend yönünde son swing'in ötesinde kapanması.</dd>
+    <dt>CHoCH</dt><dd>Change of Character: trendin tersine ilk yapı kırılımı; olası dönüş işareti.</dd>
+    <dt>HH / HL / LH / LL</dt><dd>Higher High, Higher Low, Lower High, Lower Low: tepe ve diplerin bir öncekine göre konumu.</dd>
+    <dt>BSL / SSL</dt><dd>Buy-side / sell-side liquidity: aşılmamış tepelerin üstü / diplerin altı; stop emirlerinin biriktiği yerler.</dd>
+    <dt>Sweep</dt><dd>İğnenin bir likidite seviyesini geçip mumun tekrar içeride kapanması.</dd>
+    <dt>FVG</dt><dd>Fair Value Gap: 3 mumlu yapıda 1. ve 3. mumun iğnelerinin örtüşmediği boşluk.</dd>
+    <dt>Premium / discount</dt><dd>Fiyatın son 5 günlük (30 adet 4H mum) aralığın üst / alt yarısında olması.</dd>
+    <dt>VWAP</dt><dd>Seans boyunca hacim ağırlıklı ortalama fiyat; her gün NY 18:00'de sıfırlanır.</dd>
+    <dt>PDH / PDL, PWH / PWL</dt><dd>Önceki günün / haftanın high ve low seviyeleri.</dd>
+    <dt>Tetik / invalidation</dt><dd>Senaryonun başlaması için gereken kapanış seviyesi / senaryoyu geçersiz kılan seviye.</dd>
+  </dl>
+</details>
+
+<div id="empty-state" class="card empty" hidden style="margin:16px"></div>
+
+<main id="main">
   <section>
     <div class="card">
       <div id="chart"></div>
@@ -86,12 +136,43 @@
       </div>
     </div>
     <div class="card">
-      <h2>Son Claude raporu</h2>
+      <h2>Claude raporu (claude.ai ile, ücretsiz)</h2>
+      <div class="steps">
+        <div class="step"><span class="step-no">1</span>
+          <button id="copy-prompt" class="primary">Prompt'u kopyala</button>
+          <a href="https://claude.ai/new" target="_blank" rel="noopener">claude.ai'yi aç</a>
+          <span class="note" id="prompt-status">Kopyalanan metni claude.ai'de yeni bir sohbete yapıştırın.</span>
+        </div>
+        <div class="step"><span class="step-no">2</span><span>Claude'un cevabını kopyalayıp buraya yapıştırın:</span></div>
+        <textarea id="report-input" placeholder="Claude'un raporu..."></textarea>
+        <div class="step"><span class="step-no">3</span>
+          <button id="check-report">Kontrol et ve kaydet</button>
+          <span id="check-status" class="note"></span>
+        </div>
+        <div id="correction" hidden>
+          <div class="note">Aynı claude.ai sohbetine şu mesajı gönderin, gelen yeni raporu yukarıya yapıştırıp tekrar kontrol edin:</div>
+          <pre id="correction-text"></pre>
+          <button id="copy-correction">Düzeltme mesajını kopyala</button>
+        </div>
+      </div>
+      <details><summary>API anahtarınız varsa: otomatik rapor</summary>
+        <p class="note">`.env` dosyasında ANTHROPIC_API_KEY tanımlıysa rapor tek tıkla üretilir (ücretli).</p>
+        <button id="report">API ile rapor üret</button>
+      </details>
+    </div>
+    <div class="card">
+      <h2>Son kaydedilen rapor</h2>
       <div id="report-meta" class="note"></div>
       <pre id="report-text">Henüz rapor yok.</pre>
     </div>
     <div class="card">
       <h2>Analiz geçmişi ve sonuçları</h2>
+      <div class="row-buttons">
+        <button id="record-all" title="Üç kontratın şu anki analizini kaydeder">Analizleri kaydet</button>
+        <button id="evaluate">Sonuçları ölç</button>
+        <span class="note" id="journal-status"></span>
+      </div>
+      <div id="summary" class="note"></div>
       <div class="table-wrap"><table id="history"></table></div>
     </div>
   </section>
@@ -100,6 +181,7 @@
     <div class="card">
       <h2>Durum</h2>
       <div class="price" id="price">-</div>
+      <div class="note" id="freshness"></div>
       <div style="margin:6px 0 10px"><span id="bias" class="bias neutral">-</span> <span id="score" class="note"></span></div>
       <div id="components"></div>
       <p class="note" id="score-note"></p>
@@ -302,7 +384,7 @@ function drawHistory(rows) {
   }
   if (!rows.length) {
     const tr = el("tr");
-    const td = el("td", "Kayıt yok. `record` veya `report` komutuyla analiz kaydedin.", "note");
+    const td = el("td", "Kayıt yok. \"Analizleri kaydet\" veya \"Prompt'u kopyala\" ile analiz kaydedin.", "note");
     td.colSpan = 9;
     tr.append(td);
     table.append(tr);
@@ -315,9 +397,52 @@ function drawHistory(rows) {
     : "";
 }
 
+// --- Uyarı şeridi, veri tazeliği, sekme başlığı ---
+function drawBanner(snapshot) {
+  const calendar = snapshot.news && snapshot.news.calendar;
+  const banner = $("event-banner");
+  const risk = calendar && calendar.event_risk;
+  const released = calendar ? calendar.just_released : [];
+  let text = "";
+  if (risk && risk.imminent) text = `⚠ ${risk.minutes_until} dakika sonra: ${risk.title} (${risk.time_ny} NY). Açıklama anında sert hareket olabilir.`;
+  else if (released && released.length) text = `⚠ Yeni açıklandı: ${released.map((e) => e.title).join(", ")}. Oynaklık sürebilir.`;
+  banner.textContent = text;
+  banner.hidden = !text;
+}
+
+function drawFreshness(snapshot) {
+  const five = snapshot.timeframes["5m"] || snapshot.timeframes["15m"];
+  const box = $("freshness");
+  if (!five) { box.textContent = ""; return; }
+  const lastBar = Date.parse(five.technical.ts);
+  const minutes = Math.round((Date.now() - lastBar) / 60000);
+  const open = snapshot.sessions && snapshot.sessions.current_session !== "closed";
+  box.textContent = `Son mum: ${nyTime(lastBar / 1000)} NY (${minutes} dk önce)` + (open ? "" : " · piyasa kapalı");
+  box.className = open && minutes > 45 ? "fresh-warn" : "note";
+  if (open && minutes > 45) box.textContent += " · veri eski, güncellemeyi bekleyin veya \"Verileri güncelle\"";
+}
+
+function showEmpty(message) {
+  $("empty-state").textContent = message;
+  $("empty-state").hidden = !message;
+  $("main").hidden = Boolean(message);
+}
+
+// Seçimleri hatırla (tarayıcıda saklanır; saklanamazsa varsayılanlar kullanılır)
+function remember() {
+  try { localStorage.setItem("fa-choice", JSON.stringify({ symbol: $("symbol").value, tf: $("tf").value })); } catch {}
+}
+try {
+  const saved = JSON.parse(localStorage.getItem("fa-choice") || "{}");
+  if (saved.symbol) $("symbol").value = saved.symbol;
+  if (saved.tf) $("tf").value = saved.tf;
+  if (!localStorage.getItem("fa-help-seen")) { $("help").open = true; localStorage.setItem("fa-help-seen", "1"); }
+} catch {}
+
 // --- Yükleme ---
 async function load() {
   const symbol = $("symbol").value, tf = $("tf").value;
+  remember();
   $("status").textContent = "yükleniyor...";
   try {
     const [snapshot, chartData, history] = await Promise.all([
@@ -325,6 +450,10 @@ async function load() {
       getJSON(`/chart?symbol=${symbol}&tf=${tf}&limit=300`),
       getJSON(`/analyses?symbol=${symbol}&limit=15`),
     ]);
+    showEmpty("");
+    document.title = `${symbol} ${snapshot.price} · ${snapshot.score.bias} · Futures Analyzer`;
+    drawBanner(snapshot);
+    drawFreshness(snapshot);
     drawChart(chartData);
     drawScenarioLines(snapshot.scenarios);
     drawScore(snapshot);
@@ -333,13 +462,17 @@ async function load() {
     drawSessions(snapshot.sessions);
     drawLevels(snapshot.levels);
     drawHistory(history);
-    $("status").textContent = `güncellendi ${new Date().toLocaleTimeString("tr-TR")}`;
+    $("status").textContent = `ekran yenilendi ${new Date().toLocaleTimeString("tr-TR")}`;
   } catch (error) {
-    $("status").textContent = `hata: ${error.message}`;
+    if (error.message.startsWith("Henüz veri yok")) {
+      showEmpty(error.message);
+      $("status").textContent = "";
+    } else {
+      $("status").textContent = `hata: ${error.message}`;
+    }
   }
 }
 
-$("refresh").addEventListener("click", load);
 $("symbol").addEventListener("change", load);
 $("tf").addEventListener("change", load);
 $("report").addEventListener("click", async () => {
@@ -356,7 +489,134 @@ $("report").addEventListener("click", async () => {
   }
 });
 
+// --- Veri güncelleme (arka planda) ---
+let wasRunning = false;
+async function pollDataStatus() {
+  try {
+    const s = await getJSON("/refresh/status");
+    const button = $("update-data");
+    button.disabled = s.running;
+    if (s.running) {
+      const last = s.log.length ? s.log[s.log.length - 1] : "başlıyor";
+      $("data-status").textContent = `Veriler güncelleniyor... (${last})`;
+    } else if (s.last_finished) {
+      const when = new Date(s.last_finished).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+      const auto = s.auto_refresh_minutes > 0 ? ` · ${s.auto_refresh_minutes} dk'da bir otomatik` : "";
+      const errors = s.errors.length ? ` · ${s.errors.length} adımda hata` : "";
+      $("data-status").textContent = `Veriler güncellendi ${when}${auto}${errors}`;
+      $("data-status").title = s.errors.join("\n");
+    }
+    if (wasRunning && !s.running) load();  // güncelleme bitti: ekranı yenile
+    wasRunning = s.running;
+    setTimeout(pollDataStatus, s.running ? 3000 : 30000);
+  } catch (error) {
+    $("data-status").textContent = "Sunucuya ulaşılamıyor. start.sh ile başlatın.";
+    setTimeout(pollDataStatus, 10000);
+  }
+}
+
+$("update-data").addEventListener("click", async () => {
+  await getJSON("/refresh", { method: "POST" });
+  wasRunning = true;
+  pollDataStatus();
+});
+
+// --- claude.ai akışı ---
+let promptId = null;
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+  } catch {
+    const area = el("textarea");  // eski tarayıcılar için yedek yöntem
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+}
+
+$("copy-prompt").addEventListener("click", async () => {
+  const button = $("copy-prompt");
+  button.disabled = true;
+  $("prompt-status").textContent = "hazırlanıyor...";
+  try {
+    const result = await getJSON(`/prompt?symbol=${$("symbol").value}`, { method: "POST" });
+    promptId = result.id;
+    await copyText(result.text);
+    $("prompt-status").textContent = `Analiz #${result.id} (${$("symbol").value}) kopyalandı. claude.ai'de yeni sohbete yapıştırın.`;
+    $("check-status").textContent = "";
+    $("correction").hidden = true;
+    load();
+  } catch (error) {
+    $("prompt-status").textContent = `hata: ${error.message}`;
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("check-report").addEventListener("click", async () => {
+  const text = $("report-input").value;
+  if (!promptId) { $("check-status").textContent = "Önce 1. adımda prompt'u kopyalayın."; return; }
+  if (!text.trim()) { $("check-status").textContent = "Önce raporu yapıştırın."; return; }
+  try {
+    const result = await getJSON("/check-report", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: promptId, text }),
+    });
+    if (result.validated) {
+      $("check-status").textContent = `Doğrulandı ve analiz #${promptId} kaydına eklendi.`;
+      $("check-status").className = "ok";
+      $("correction").hidden = true;
+      $("report-input").value = "";
+    } else {
+      $("check-status").textContent = `Veride olmayan fiyatlar var: ${result.unknown_numbers.join(", ")} (doğrulanmadı olarak kaydedildi)`;
+      $("check-status").className = "warn";
+      $("correction-text").textContent = result.correction;
+      $("correction").hidden = false;
+    }
+    load();
+  } catch (error) {
+    $("check-status").textContent = `hata: ${error.message}`;
+    $("check-status").className = "warn";
+  }
+});
+
+$("copy-correction").addEventListener("click", () => copyText($("correction-text").textContent));
+
+// --- Kayıt ve sonuç ölçümü ---
+$("record-all").addEventListener("click", async () => {
+  $("journal-status").textContent = "kaydediliyor...";
+  try {
+    const saved = await getJSON("/record", { method: "POST" });
+    $("journal-status").textContent = saved.map((s) => `#${s.id} ${s.instrument} ${s.bias}`).join(" · ");
+    load();
+  } catch (error) {
+    $("journal-status").textContent = `hata: ${error.message}`;
+  }
+});
+
+$("evaluate").addEventListener("click", async () => {
+  $("journal-status").textContent = "ölçülüyor...";
+  try {
+    const result = await getJSON(`/evaluate?symbol=${$("symbol").value}`, { method: "POST" });
+    const s = result.summary;
+    const pct = (v) => v === null || v === undefined ? "-" : `%${v}`;
+    $("journal-status").textContent = `${result.updated} kayıt güncellendi`;
+    $("summary").textContent = s.evaluated
+      ? `${$("symbol").value}: ${s.evaluated} analiz ölçüldü · 4s yön isabeti: bullish ${pct(s.by_bias.bullish.hit_rate_4h)}, `
+        + `bearish ${pct(s.by_bias.bearish.hit_rate_4h)} (baseline ${pct(s.baseline.hit_rate_4h)}) · `
+        + `birincil senaryo hedefe ulaşma ${pct(s.scenarios.primary_target_rate)}`
+      : "Henüz 1 günü dolmuş analiz yok; kaydettiğiniz analizler ertesi gün ölçülebilir.";
+    load();
+  } catch (error) {
+    $("journal-status").textContent = `hata: ${error.message}`;
+  }
+});
+
 load();
+pollDataStatus();
 setInterval(load, 60_000);  // dakikada bir yenile (veri zaten gecikmeli)
 </script>
 </body>

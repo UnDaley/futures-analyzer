@@ -88,7 +88,9 @@ def build_snapshot(data: MarketData, now: pd.Timestamp, news: dict | None = None
         }
 
     five_min = candles["5m"]
-    price = float(five_min["close"].iloc[-1]) if not five_min.empty else None
+    # Fiyat: en ayrıntılı (en güncel) zaman diliminin son kapanışı
+    latest = next((candles[tf] for tf in ("5m", "15m", "1h") if not candles[tf].empty), None)
+    price = float(latest["close"].iloc[-1]) if latest is not None else None
     sessions = sessions_snapshot(five_min, instrument, now) if not five_min.empty else None
     snapshot = {
         "instrument": instrument.symbol,

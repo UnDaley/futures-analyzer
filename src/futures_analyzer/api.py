@@ -1,26 +1,35 @@
 """HTTP API ve dashboard.
 
-Çalıştırma: uvicorn futures_analyzer.api:app --reload
+Çalıştırma: uvicorn futures_analyzer.api:app  (veya ./start.sh)
 Dashboard: http://localhost:8000/
+
+Sunucu açıkken veriler arka planda otomatik güncellenir (AUTO_REFRESH_MINUTES, varsayılan 15).
 """
 
 import math
+import threading
+import time
+from contextlib import asynccontextmanager
 from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import HTMLResponse
+from pydantic import BaseModel
 from sqlalchemy import Engine
 
+from futures_analyzer.ai.manual import check_manual_report, manual_prompt
 from futures_analyzer.ai.report import ReportError, generate_report
 from futures_analyzer.analysis import market_snapshot
 from futures_analyzer.data.providers.base import TIMEFRAMES
+from futures_analyzer.config import settings
 from futures_analyzer.data.storage import create_tables, get_engine, load_analyses, load_candles
-from futures_analyzer.evaluation.journal import record_analysis
+from futures_analyzer.evaluation.journal import evaluate_pending, record_analysis
+from futures_analyzer.evaluation.stats import summarize
 from futures_analyzer.indicators.engine import VWAP_TIMEFRAMES, add_indicators
 from futures_analyzer.instruments import INSTRUMENTS
+from futures_analyzer.refresh import RefreshJob
 
-app = FastAPI(title="Futures Analyzer", description="Analiz asistanı. Otomatik işlem yapmaz.")
 DASHBOARD = Path(__file__).parent / "web" / "dashboard.html"
 CHART_LINES = ["ema_20", "ema_50", "ema_200", "vwap"]
 INDICATOR_WARMUP = 300  # EMA 200'ün oturması için grafikte gösterilenden fazla mum yüklenir
@@ -31,6 +40,26 @@ def db_engine() -> Engine:
     engine = get_engine()
     create_tables(engine)
     return engine
+
+
+refresh_job = RefreshJob(db_engine)
+
+
+def _auto_refresh_loop(minutes: int) -> None:
+    """Sunucu açılınca hemen, sonra her `minutes` dakikada bir verileri günceller."""
+    while True:
+        refresh_job.run_now()
+        time.sleep(minutes * 60)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    if settings.auto_refresh_minutes > 0:
+        threading.Thread(target=_auto_refresh_loop, args=(settings.auto_refresh_minutes,), daemon=True).start()
+    yield
+
+
+app = FastAPI(title="Futures Analyzer", description="Analiz asistanı. Otomatik işlem yapmaz.", lifespan=lifespan)
 
 
 def _check_symbol(symbol: str) -> str:
@@ -81,17 +110,27 @@ def chart(
 
     bars, lines = [], {name: [] for name in CHART_LINES if name in df.columns}
     for ts, row in df.iterrows():
-        time = int(ts.timestamp())
-        bars.append({"time": time, **{k: float(row[k]) for k in ("open", "high", "low", "close", "volume")}})
+        seconds = int(ts.timestamp())
+        bars.append({"time": seconds, **{k: float(row[k]) for k in ("open", "high", "low", "close", "volume")}})
         for name in lines:
             if not math.isnan(row[name]):
-                lines[name].append({"time": time, "value": round(float(row[name]), 2)})
+                lines[name].append({"time": seconds, "value": round(float(row[name]), 2)})
     return {"symbol": symbol, "timeframe": tf, "has_vwap": tf in VWAP_TIMEFRAMES, "bars": bars, "lines": lines}
+
+
+NO_DATA = "Henüz veri yok. Veriler güncelleniyor; ilk seferde birkaç dakika sürebilir."
+
+
+def _snapshot_or_409(engine: Engine, symbol: str) -> dict:
+    current = market_snapshot(engine, _check_symbol(symbol))
+    if current["price"] is None:
+        raise HTTPException(409, NO_DATA)
+    return current
 
 
 @app.get("/snapshot")
 def snapshot(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
-    return market_snapshot(engine, _check_symbol(symbol))
+    return _snapshot_or_409(engine, symbol)
 
 
 @app.get("/analyses")
@@ -107,10 +146,66 @@ def analyses(symbol: str | None = None, limit: int = Query(20, ge=1, le=500), en
 @app.post("/report")
 def report(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
     """Claude raporu üretir ve kaydeder. API anahtarı yoksa 503 döner."""
-    current = market_snapshot(engine, _check_symbol(symbol))
+    current = _snapshot_or_409(engine, symbol)
     try:
         result = generate_report(current)
     except ReportError as error:
         raise HTTPException(503, str(error)) from error
     analysis_id = record_analysis(engine, current, result)
     return {"id": analysis_id, **result}
+
+
+# --- Terminalsiz kullanım: güncelleme, claude.ai akışı, kayıt ve değerlendirme ---
+
+@app.post("/refresh")
+def refresh() -> dict:
+    """Verileri arka planda günceller. Durum /refresh/status ile izlenir."""
+    return {"started": refresh_job.start(), **refresh_job.status()}
+
+
+@app.get("/refresh/status")
+def refresh_status() -> dict:
+    return {**refresh_job.status(), "auto_refresh_minutes": settings.auto_refresh_minutes}
+
+
+@app.post("/prompt")
+def prompt(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
+    """Analizi kaydeder ve claude.ai'ye yapıştırılacak metni döndürür."""
+    current = _snapshot_or_409(engine, symbol)
+    return {"id": record_analysis(engine, current), "text": manual_prompt(current)}
+
+
+class ManualReport(BaseModel):
+    id: int
+    text: str
+
+
+@app.post("/check-report")
+def check_report(report: ManualReport, engine: Engine = Depends(db_engine)) -> dict:
+    """claude.ai'den gelen raporu kontrol eder ve analiz kaydına ekler."""
+    if not report.text.strip():
+        raise HTTPException(400, "Rapor boş")
+    try:
+        return check_manual_report(engine, report.id, report.text)
+    except ValueError as error:
+        raise HTTPException(404, str(error)) from error
+
+
+@app.post("/record")
+def record(symbol: str | None = None, engine: Engine = Depends(db_engine)) -> list[dict]:
+    """Analizi Claude'suz kaydeder (sembol verilmezse hepsi)."""
+    symbols = [_check_symbol(symbol)] if symbol else list(INSTRUMENTS)
+    saved = []
+    for name in symbols:
+        current = market_snapshot(engine, name)
+        if current["price"] is None:
+            continue
+        saved.append({"id": record_analysis(engine, current), "instrument": name, "bias": current["score"]["bias"]})
+    return saved
+
+
+@app.post("/evaluate")
+def evaluate(symbol: str | None = None, engine: Engine = Depends(db_engine)) -> dict:
+    """Zamanı gelen analizlerin sonuçlarını ölçer ve özeti döndürür."""
+    updated = evaluate_pending(engine)
+    return {"updated": updated, "summary": summarize(load_analyses(engine, _check_symbol(symbol) if symbol else None))}
