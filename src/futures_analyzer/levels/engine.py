@@ -27,7 +27,10 @@ REFERENCE_SOURCES = {
 
 
 def levels_snapshot(
-    candles: dict[str, pd.DataFrame], instrument: Instrument, extra_levels: list[dict] | None = None
+    candles: dict[str, pd.DataFrame],
+    instrument: Instrument,
+    extra_levels: list[dict] | None = None,
+    now: pd.Timestamp | None = None,
 ) -> dict | None:
     """candles: zaman dilimi -> mumlar. En az 1h ve 5m verisi gerekir.
     extra_levels: başka motorlardan gelen seviyeler (örn. seans high/low), aynı biçimde.
@@ -51,7 +54,7 @@ def levels_snapshot(
         levels.append({"price": round(vwap, 2), "source": "VWAP"})
     for level in round_number_levels(price, instrument.round_step):
         levels.append({"price": level, "source": "ROUND"})
-    levels.extend(_swing_levels(candles))
+    levels.extend(_swing_levels(candles, now))
     levels.extend(extra_levels or [])
 
     tolerance = round(hourly_atr * ZONE_TOLERANCE_ATR, 2) if hourly_atr else 0.0
@@ -65,13 +68,13 @@ def levels_snapshot(
     }
 
 
-def _swing_levels(candles: dict[str, pd.DataFrame]) -> list[dict]:
+def _swing_levels(candles: dict[str, pd.DataFrame], now: pd.Timestamp | None) -> list[dict]:
     levels = []
     for timeframe in SWING_TIMEFRAMES:
         df = candles.get(timeframe)
         if df is None or df.empty:
             continue
-        closed = drop_incomplete_last_bar(df, timeframe)
+        closed = drop_incomplete_last_bar(df, timeframe, now)
         swings = find_swings(closed, SWING_LENGTH).tail(SWINGS_PER_TIMEFRAME)
         for kind, price in zip(swings["kind"], swings["price"]):
             levels.append({"price": price, "source": f"SWING_{kind.upper()}_{timeframe.upper()}"})

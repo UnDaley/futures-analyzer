@@ -23,19 +23,19 @@ RECENT_BARS = 20             # sweep ve displacement için "yakın geçmiş"
 DEALING_RANGE_BARS = 30      # premium/discount için 4H mum sayısı (~5 işlem günü)
 
 
-def liquidity_snapshot(candles: dict[str, pd.DataFrame], price: float) -> dict:
+def liquidity_snapshot(candles: dict[str, pd.DataFrame], price: float, now: pd.Timestamp | None = None) -> dict:
     timeframes = {}
     for timeframe in LIQUIDITY_TIMEFRAMES:
         df = candles.get(timeframe)
         if df is None or df.empty:
             timeframes[timeframe] = None
             continue
-        closed = drop_incomplete_last_bar(df, timeframe).tail(ANALYSIS_BARS)
+        closed = drop_incomplete_last_bar(df, timeframe, now).tail(ANALYSIS_BARS)
         timeframes[timeframe] = _timeframe_liquidity(closed, price)
 
     return {
         "timeframes": timeframes,
-        "premium_discount": premium_discount(candles.get("4h"), price),
+        "premium_discount": premium_discount(candles.get("4h"), price, now),
     }
 
 
@@ -61,14 +61,14 @@ def _timeframe_liquidity(df: pd.DataFrame, price: float) -> dict | None:
     }
 
 
-def premium_discount(four_hour: pd.DataFrame | None, price: float) -> dict | None:
+def premium_discount(four_hour: pd.DataFrame | None, price: float, now: pd.Timestamp | None = None) -> dict | None:
     """Son DEALING_RANGE_BARS adet 4H mumun aralığında fiyatın yeri.
 
     %55 üstü premium (pahalı bölge), %45 altı discount (ucuz bölge), arası equilibrium.
     """
     if four_hour is None or four_hour.empty:
         return None
-    recent = drop_incomplete_last_bar(four_hour, "4h").tail(DEALING_RANGE_BARS)
+    recent = drop_incomplete_last_bar(four_hour, "4h", now).tail(DEALING_RANGE_BARS)
     high, low = float(recent["high"].max()), float(recent["low"].min())
     if high == low:
         return None

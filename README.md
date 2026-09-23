@@ -17,6 +17,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 9 (haber ve ekonomik takvim) tamamlandı: olay riski, yeni açıklanan veriler, resmi kaynaklardan haberler.
 - Faz 10 (senaryo motoru ve skor) tamamlandı: ağırlıklı skor, bullish/bearish/neutral senaryolar.
 - Faz 11 (Claude entegrasyonu) tamamlandı: standart formatta Türkçe rapor, uydurma fiyat kontrolü.
+- Faz 12 (backtest / değerlendirme) tamamlandı: analiz günlüğü, sonuç ölçümü, geçmişe dönük backtest.
 
 ## Kurulum
 
@@ -56,7 +57,10 @@ uv run python -m futures_analyzer.cli fetch-news                   # haberler + 
 uv run python -m futures_analyzer.cli fetch-all                    # hepsini tek seferde çek
 uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
 uv run python -m futures_analyzer.cli snapshot NQ                 # bütün analiz verisi (JSON)
-uv run python -m futures_analyzer.cli report NQ                   # Claude raporu (ANTHROPIC_API_KEY gerekir)
+uv run python -m futures_analyzer.cli report NQ                   # Claude raporu (ANTHROPIC_API_KEY gerekir, kaydedilir)
+uv run python -m futures_analyzer.cli record                      # analizleri Claude'suz kaydet
+uv run python -m futures_analyzer.cli evaluate                    # kayıtların sonuçlarını ölç ve özetle
+uv run python -m futures_analyzer.cli backtest NQ --days 50 --step 4h --csv nq.csv
 
 uv run uvicorn futures_analyzer.api:app --reload
 curl "localhost:8000/candles?symbol=NQ&tf=1h&limit=5"
@@ -163,3 +167,20 @@ Senaryolar: tetik = en yakın direnç/destek zone'unun kenarı (fiyat bir zone'u
 - Rapordaki fiyat gibi görünen her sayı (güncel fiyatın ±%30'u) snapshot'taki değerlerle bir tick toleransla karşılaştırılır. Bilinmeyen sayı varsa Claude'dan bir kez düzeltmesi istenir; hâlâ varsa rapor "doğrulanmadı" olarak işaretlenir ve sayılar listelenir.
 - İstek güvenlik sınıflandırıcısı tarafından reddedilirse sunucu tarafı fallback (`fallbacks: "default"`) devreye girer.
 - System prompt sabittir ve önbelleğe alınır; adaptive thinking ve streaming kullanılır.
+
+## Backtest ve değerlendirme
+
+- `report` ve `record` her analizi `analyses` tablosuna kaydeder. `evaluate` zamanı gelen kayıtlar için 1s / 4s / 1g sonraki fiyat değişimini, bias'ın 4 saatlik yön isabetini ve 1 gün içinde hangi senaryonun tetiklenip hedefe mi invalidation'a mı gittiğini ölçer.
+- `backtest` analiz motorunu geçmişteki anlara o anda bilinen veriyle uygular (Claude kullanılmaz). Canlı analizle aynı `build_snapshot` fonksiyonu kullanılır; `now` sonrasındaki verinin sonucu değiştirmediği testle doğrulanır.
+- Sınırlar: 5m veri ~60 gün olduğu için en fazla ~55 gün geriye gidilebilir; geçmiş haberler dahil edilmez; aylık makro veriler gözlem tarihine göre filtrelenir (gerçek yayın tarihi daha sonradır). 4 saatlik adımlarla gözlemler birbiriyle örtüşür, bu yüzden örneklem gerçekte göründüğünden küçüktür.
+- Başarı ölçütü raporun ne kadar ikna edici yazıldığı değil, bu tablolardır. Her satır `baseline` (sinyal kullanmadan bütün analizler) ile karşılaştırılmalıdır.
+
+İlk ölçüm (3 Ağustos - 22 Eylül 2026, 4 saatlik adım, 180 analiz; başlangıç ağırlıklarıyla):
+
+| Kontrat | Baseline 4s isabet | Bullish bias 4s isabet | Bearish bias 4s isabet | Birincil senaryo hedefe ulaşma |
+|---|---|---|---|---|
+| NQ | %48,3 | %46,8 | %51,3 | %48,4 |
+| ES | %54,4 | %53,7 | %55,6 | %46,0 |
+| GC | %51,4 | %55,7 | %45,7 | %66,1 |
+
+Yorum: NQ ve ES için skorun baseline'a göre anlamlı bir avantajı görünmüyor; GC'deki fark küçük örneklem nedeniyle henüz güvenilir değil. Ağırlıklar ve kurallar bu ölçümlere göre ayarlanmalı.

@@ -27,12 +27,12 @@ BIAS_THRESHOLD = 15  # |toplam| bundan küçükse nötr
 DIRECTION = {"bullish": 1, "bearish": -1}
 
 
-def score_snapshot(snapshot: dict, hourly: pd.DataFrame | None = None) -> dict:
+def score_snapshot(snapshot: dict, hourly: pd.DataFrame | None = None, now: pd.Timestamp | None = None) -> dict:
     components = {
         "trend": _trend(snapshot),
         "structure": _structure(snapshot),
         "liquidity": _liquidity(snapshot),
-        "volume": _volume(hourly),
+        "volume": _volume(hourly, now),
         "vwap": _vwap(snapshot),
         "macro": _macro(snapshot),
         "intermarket": _intermarket(snapshot),
@@ -127,11 +127,11 @@ def _liquidity(snapshot: dict) -> dict:
     return _component(value, available, "; ".join(reasons) or "Likidite sinyali yok")
 
 
-def _volume(hourly: pd.DataFrame | None) -> dict:
+def _volume(hourly: pd.DataFrame | None, now: pd.Timestamp | None) -> dict:
     """Son 5 kapanmış 1H mumda hacmin ne kadarı yükselen, ne kadarı düşen mumlarda gerçekleşti."""
     if hourly is None or len(hourly) < 6:
         return _component(0, False, "Hacim verisi yok")
-    recent = drop_incomplete_last_bar(hourly, "1h").tail(5)
+    recent = drop_incomplete_last_bar(hourly, "1h", now).tail(5)
     total_volume = recent["volume"].sum()
     if total_volume <= 0:
         return _component(0, False, "Son mumlarda hacim yok")

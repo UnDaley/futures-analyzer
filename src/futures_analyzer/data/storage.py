@@ -6,7 +6,21 @@ Bu sayede henüz kapanmamış son mum da sonraki çekişte düzelir.
 """
 
 import pandas as pd
-from sqlalchemy import JSON, Column, DateTime, Engine, Float, MetaData, String, Table, create_engine, select
+from sqlalchemy import (
+    JSON,
+    Boolean,
+    Column,
+    DateTime,
+    Engine,
+    Float,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    Text,
+    create_engine,
+    select,
+)
 from sqlalchemy.dialects import postgresql, sqlite
 
 from futures_analyzer.config import settings
@@ -182,3 +196,48 @@ def _as_utc(value) -> pd.Timestamp:
     """SQLite saat dilimini saklamaz; kaydettiğimiz her şey UTC olduğu için UTC kabul ediyoruz."""
     ts = pd.Timestamp(value)
     return ts.tz_localize("UTC") if ts.tz is None else ts.tz_convert("UTC")
+
+
+# --- Analiz kayıtları (Faz 12: backtest / değerlendirme) ---
+
+analyses_table = Table(
+    "analyses",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("created_at", DateTime(timezone=True), nullable=False),
+    Column("as_of", DateTime(timezone=True), nullable=False),
+    Column("instrument", String(16), nullable=False),
+    Column("price", Float),
+    Column("bias", String(16), nullable=False),
+    Column("score_total", Float, nullable=False),
+    Column("coverage", Integer, nullable=False),
+    Column("scenarios", JSON),
+    Column("snapshot", JSON),
+    Column("report_text", Text),
+    Column("report_model", String(64)),
+    Column("report_validated", Boolean),
+    Column("evaluation", JSON),
+)
+
+
+def save_analysis(engine: Engine, row: dict) -> int:
+    with engine.begin() as conn:
+        result = conn.execute(analyses_table.insert().values(**row))
+        return int(result.inserted_primary_key[0])
+
+
+def load_analyses(engine: Engine, instrument: str | None = None, limit: int | None = None) -> list[dict]:
+    query = select(analyses_table).order_by(analyses_table.c.as_of.desc())
+    if instrument:
+        query = query.where(analyses_table.c.instrument == instrument)
+    if limit:
+        query = query.limit(limit)
+    with engine.connect() as conn:
+        rows = conn.execute(query).mappings().all()
+    return [{**row, "as_of": _as_utc(row["as_of"]), "created_at": _as_utc(row["created_at"])} for row in rows]
+
+
+def update_evaluation(engine: Engine, analysis_id: int, evaluation: dict) -> None:
+    stmt = analyses_table.update().where(analyses_table.c.id == analysis_id).values(evaluation=evaluation)
+    with engine.begin() as conn:
+        conn.execute(stmt)

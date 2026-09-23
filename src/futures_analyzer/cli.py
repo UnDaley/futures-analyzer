@@ -9,7 +9,10 @@
     python -m futures_analyzer.cli fetch-news
     python -m futures_analyzer.cli fetch-all                 # hepsi
     python -m futures_analyzer.cli snapshot NQ
-    python -m futures_analyzer.cli report NQ                 # Claude raporu
+    python -m futures_analyzer.cli report NQ                 # Claude raporu (kaydedilir)
+    python -m futures_analyzer.cli record                    # analizleri Claude'suz kaydet
+    python -m futures_analyzer.cli evaluate                  # kayıtların sonuçlarını ölç
+    python -m futures_analyzer.cli backtest NQ --days 30 --step 4h
 """
 
 import argparse
@@ -19,11 +22,14 @@ import logging
 import pandas as pd
 
 from futures_analyzer.ai.report import ReportError, generate_report
-from futures_analyzer.analysis import market_snapshot
+from futures_analyzer.analysis import load_market_data, market_snapshot
+from futures_analyzer.evaluation.backtest import records_to_frame, run_backtest
+from futures_analyzer.evaluation.journal import evaluate_pending, record_analysis
+from futures_analyzer.evaluation.stats import summarize
 from futures_analyzer.data.ingest import FETCH_TIMEFRAMES, ingest
 from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.data.providers.yahoo import YahooProvider
-from futures_analyzer.data.storage import create_tables, get_engine, load_candles
+from futures_analyzer.data.storage import create_tables, get_engine, load_analyses, load_candles
 from futures_analyzer.instruments import INSTRUMENTS, INTERMARKET_ASSETS, get_instrument
 from futures_analyzer.macro.ingest import ingest_macro
 from futures_analyzer.news.engine import ingest_news
@@ -97,18 +103,75 @@ def cmd_snapshot(args: argparse.Namespace) -> None:
 
 def cmd_report(args: argparse.Namespace) -> None:
     instrument = get_instrument(args.symbol)
-    snapshot = market_snapshot(get_engine(), instrument.symbol)
+    engine = get_engine()
+    create_tables(engine)
+    snapshot = market_snapshot(engine, instrument.symbol)
     try:
         report = generate_report(snapshot)
     except ReportError as error:
         print(f"Rapor üretilemedi: {error}")
         raise SystemExit(1)
+    analysis_id = record_analysis(engine, snapshot, report)
 
     print(report["text"])
     print()
-    print(f"-- model: {report['model']} | deneme: {report['attempts']} | token: {report['usage']}")
+    print(f"-- kayıt #{analysis_id} | model: {report['model']} | deneme: {report['attempts']} | token: {report['usage']}")
     if not report["validated"]:
         print(f"!! UYARI: raporda veride olmayan sayılar var: {', '.join(report['unknown_numbers'])}")
+
+
+def cmd_record(args: argparse.Namespace) -> None:
+    """Claude olmadan, sadece deterministik analizi kaydeder (backtest günlüğü için)."""
+    engine = get_engine()
+    create_tables(engine)
+    for symbol in [args.symbol] if args.symbol else INSTRUMENTS:
+        snapshot = market_snapshot(engine, get_instrument(symbol).symbol)
+        analysis_id = record_analysis(engine, snapshot)
+        score = snapshot["score"]
+        print(f"#{analysis_id} {symbol}: fiyat {snapshot['price']} | skor {score['total']} ({score['bias']})")
+
+
+def cmd_evaluate(args: argparse.Namespace) -> None:
+    engine = get_engine()
+    create_tables(engine)
+    print(f"{evaluate_pending(engine)} kayıt güncellendi (1 günlük sonucu tamamlanmayanlar sonra tekrar ölçülür)")
+    print_summary(summarize(load_analyses(engine, args.symbol.upper() if args.symbol else None)))
+
+
+def cmd_backtest(args: argparse.Namespace) -> None:
+    instrument = get_instrument(args.symbol)
+    data = load_market_data(get_engine(), instrument.symbol)
+    end = pd.Timestamp.now(tz="UTC").floor("h") - pd.Timedelta(days=1)  # sonucu ölçülebilecek son an
+    start = end - pd.Timedelta(days=args.days)
+
+    def progress(done, total):
+        if done % 20 == 0 or done == total:
+            print(f"  {done}/{total}", flush=True)
+
+    print(f"{instrument.symbol} backtest: {start:%Y-%m-%d %H:%M} -> {end:%Y-%m-%d %H:%M} UTC, adım {args.step}")
+    records = run_backtest(data, start, end, pd.Timedelta(args.step), progress)
+    print_summary(summarize(records))
+    if args.csv:
+        records_to_frame(records).to_csv(args.csv, index=False)
+        print(f"Ayrıntılar: {args.csv}")
+
+
+def print_summary(summary: dict) -> None:
+    print(f"\nDeğerlendirilen analiz: {summary['evaluated']}")
+    print(f"{'grup':<16}{'adet':>6}{'isabet 4s %':>13}{'ort. 4s %':>11}{'ort. 1g %':>11}")
+    rows = [("hepsi (baseline)", summary["baseline"])]
+    rows += [(f"bias {k}", v) for k, v in summary["by_bias"].items()]
+    rows += [(f"skor {k}", v) for k, v in summary["by_score"].items()]
+    for name, stats in rows:
+        print(f"{name:<16}{stats['count']:>6}{_fmt(stats.get('hit_rate_4h')):>13}"
+              f"{_fmt(stats.get('avg_return_4h')):>11}{_fmt(stats.get('avg_return_1d')):>11}")
+    scenarios = summary["scenarios"]
+    print(f"Senaryo sonuçları: {scenarios['outcomes']}")
+    print(f"Birincil senaryo tetiklendi: {scenarios['primary_triggered']}, hedefe ulaşma %: {_fmt(scenarios['primary_target_rate'])}")
+
+
+def _fmt(value) -> str:
+    return "-" if value is None else f"{value:g}"
 
 
 def main() -> None:
@@ -146,6 +209,21 @@ def main() -> None:
     report = sub.add_parser("report", help="Claude ile analiz raporu üret (ANTHROPIC_API_KEY gerekir)")
     report.add_argument("symbol")
     report.set_defaults(func=cmd_report)
+
+    record = sub.add_parser("record", help="Analizi (Claude olmadan) kaydet; sembol verilmezse hepsi")
+    record.add_argument("symbol", nargs="?")
+    record.set_defaults(func=cmd_record)
+
+    evaluate = sub.add_parser("evaluate", help="Kayıtlı analizlerin sonuçlarını ölç ve özetle")
+    evaluate.add_argument("symbol", nargs="?")
+    evaluate.set_defaults(func=cmd_evaluate)
+
+    backtest = sub.add_parser("backtest", help="Geçmişe dönük backtest (Claude kullanılmaz)")
+    backtest.add_argument("symbol")
+    backtest.add_argument("--days", type=int, default=30, help="Kaç gün geriye (en fazla ~55)")
+    backtest.add_argument("--step", default="4h", help="Analiz aralığı, örn. 1h, 4h")
+    backtest.add_argument("--csv", help="Ayrıntıları bu CSV dosyasına yaz")
+    backtest.set_defaults(func=cmd_backtest)
 
     args = parser.parse_args()
     args.func(args)
