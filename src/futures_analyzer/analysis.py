@@ -1,10 +1,11 @@
 """Veritabanındaki mumlardan kontratın analiz özetini (snapshot) üretir.
 
 - levels: destek / direnç zone'ları ve referans seviyeler (Faz 4)
+- sessions: Asya / Londra / New York high-low, NY açılışı (Faz 5)
 - timeframes: her zaman dilimi için
     - technical: gösterge değerleri (Faz 2)
     - structure: swing'ler, HH/HL, BOS/CHoCH (Faz 3)
-Sonraki fazlarda seanslar, likidite vb. eklenecek ve Claude'a giden JSON bu olacak.
+Claude'a giden JSON bu özettir.
 """
 
 from sqlalchemy import Engine
@@ -15,6 +16,7 @@ from futures_analyzer.indicators.engine import add_indicators, latest_snapshot
 from futures_analyzer.instruments import get_instrument
 from futures_analyzer.levels.engine import levels_snapshot
 from futures_analyzer.market_time import drop_incomplete_last_bar
+from futures_analyzer.sessions.engine import session_levels, sessions_snapshot
 from futures_analyzer.structure.engine import structure_snapshot
 
 
@@ -37,9 +39,11 @@ def market_snapshot(db: Engine, symbol: str) -> dict:
             "structure": structure_snapshot(closed, timeframe) if len(closed) else None,
         }
 
+    sessions = sessions_snapshot(candles["5m"], instrument)
     return {
         "instrument": instrument.symbol,
         "data_source": "yfinance (10-15 dk gecikmeli)",
-        "levels": levels_snapshot(candles, instrument),
+        "sessions": sessions,
+        "levels": levels_snapshot(candles, instrument, extra_levels=session_levels(sessions)),
         "timeframes": timeframes,
     }

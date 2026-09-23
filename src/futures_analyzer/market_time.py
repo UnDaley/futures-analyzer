@@ -78,3 +78,45 @@ def trading_date(index: pd.DatetimeIndex) -> pd.DatetimeIndex:
     """
     local_start = session_start(index).tz_convert(NEW_YORK).tz_localize(None)
     return (local_start + pd.Timedelta(hours=24 - SESSION_OPEN_HOUR)).floor("D")
+
+
+# Gün içi seanslar (New York saati). Asya akşam 18:00'de başlar, gece yarısını geçer.
+ASIA = "asia"
+LONDON = "london"
+NEW_YORK_SESSION = "new_york"
+CLOSED = "closed"
+SESSION_HOURS = {
+    ASIA: ("18:00", "03:00"),
+    LONDON: ("03:00", "08:00"),
+    NEW_YORK_SESSION: ("08:00", "17:00"),
+}
+
+
+def session_names(index: pd.DatetimeIndex) -> pd.Index:
+    """Her zaman damgasının hangi gün içi seansa ait olduğu (asia / london / new_york / closed)."""
+    local = index.tz_convert(NEW_YORK)
+    minutes = local.hour * 60 + local.minute
+    names = []
+    for m in minutes:
+        if m >= 18 * 60 or m < 3 * 60:
+            names.append(ASIA)
+        elif m < 8 * 60:
+            names.append(LONDON)
+        elif m < 17 * 60:
+            names.append(NEW_YORK_SESSION)
+        else:
+            names.append(CLOSED)
+    return pd.Index(names)
+
+
+def is_market_open(now: pd.Timestamp) -> bool:
+    """CME piyasası açık mı? Cuma 17:00 - pazar 18:00 arası ve her gün 17:00-18:00 kapalı."""
+    local = now.tz_convert(NEW_YORK)
+    weekday, hour = local.weekday(), local.hour  # pazartesi = 0, pazar = 6
+    if weekday == 5:
+        return False
+    if weekday == 4 and hour >= 17:
+        return False
+    if weekday == 6 and hour < 18:
+        return False
+    return hour != 17

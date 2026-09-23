@@ -10,6 +10,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 2 (teknik göstergeler) tamamlandı: EMA 20/50/100/200, RSI 14, MACD, ATR 14, seans VWAP'ı, hacim ortalaması, EMA trendi.
 - Faz 3 (market structure) tamamlandı: swing high/low, HH/HL/LH/LL, BOS, CHoCH.
 - Faz 4 (destek/direnç) tamamlandı: PDH/PDL, PWH/PWL, seans high/low, VWAP, swing'ler, round number, zone'lar.
+- Faz 5 (seans analizi) tamamlandı: Asya/Londra/New York high-low, NY açılışı, önceki NY high-low.
 
 ## Kurulum
 
@@ -88,3 +89,13 @@ uv run pytest -m network    # gerçek yfinance verisiyle test
 - PDH/PDL, PWH/PWL ve seans high/low 1H mumlardan, CME seansına (NY 18:00-17:00) göre hesaplanır. yfinance'in günlük verisi vade geçişi (roll) haftalarında farklı kontrata bakabildiği için kullanılmaz.
 - Seviyeler: referanslar, 5m seans VWAP'ı, son 10 adet 1H ve 4H swing, en yakın round number'lar (NQ 100, ES 25, GC 25).
 - 1H ATR'nin çeyreğinden yakın seviyeler tek zone'da birleşir; `strength` zone'daki farklı kaynak sayısıdır.
+
+## Seanslar (New York saati)
+
+| Seans | Saat |
+|---|---|
+| Asya | 18:00-03:00 |
+| Londra | 03:00-08:00 |
+| New York | 08:00-17:00 |
+
+NY açılışı NQ/ES için 09:30, GC için 08:20 (COMEX). Seanslar New York saatine göre tanımlıdır, yaz saati değişimleri otomatik uygulanır. `taken` alanı bir seansın high/low'unun sonraki seanslarda aşılıp aşılmadığını gösterir. Seans seviyeleri destek/direnç zone'larına da eklenir.

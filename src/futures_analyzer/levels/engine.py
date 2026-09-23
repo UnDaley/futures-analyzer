@@ -26,8 +26,11 @@ REFERENCE_SOURCES = {
 }
 
 
-def levels_snapshot(candles: dict[str, pd.DataFrame], instrument: Instrument) -> dict | None:
+def levels_snapshot(
+    candles: dict[str, pd.DataFrame], instrument: Instrument, extra_levels: list[dict] | None = None
+) -> dict | None:
     """candles: zaman dilimi -> mumlar. En az 1h ve 5m verisi gerekir.
+    extra_levels: başka motorlardan gelen seviyeler (örn. seans high/low), aynı biçimde.
 
     Fiyat, seans high/low ve VWAP son (açık olabilen) mumu da kullanır; swing'ler sadece kapanmış mumlarla bulunur.
     """
@@ -49,6 +52,7 @@ def levels_snapshot(candles: dict[str, pd.DataFrame], instrument: Instrument) ->
     for level in round_number_levels(price, instrument.round_step):
         levels.append({"price": level, "source": "ROUND"})
     levels.extend(_swing_levels(candles))
+    levels.extend(extra_levels or [])
 
     tolerance = round(hourly_atr * ZONE_TOLERANCE_ATR, 2) if hourly_atr else 0.0
     zones = build_zones(levels, tolerance)
