@@ -245,3 +245,21 @@ def update_evaluation(engine: Engine, analysis_id: int, evaluation: dict) -> Non
     stmt = analyses_table.update().where(analyses_table.c.id == analysis_id).values(evaluation=evaluation)
     with engine.begin() as conn:
         conn.execute(stmt)
+
+
+def load_analysis(engine: Engine, analysis_id: int) -> dict | None:
+    with engine.connect() as conn:
+        row = conn.execute(select(analyses_table).where(analyses_table.c.id == analysis_id)).mappings().first()
+    if row is None:
+        return None
+    return {**row, "as_of": _as_utc(row["as_of"]), "created_at": _as_utc(row["created_at"])}
+
+
+def update_report(engine: Engine, analysis_id: int, text: str, model: str, validated: bool) -> None:
+    stmt = (
+        analyses_table.update()
+        .where(analyses_table.c.id == analysis_id)
+        .values(report_text=text, report_model=model, report_validated=validated)
+    )
+    with engine.begin() as conn:
+        conn.execute(stmt)

@@ -69,6 +69,8 @@ uv run python -m futures_analyzer.cli fetch-all                    # hepsini tek
 uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
 uv run python -m futures_analyzer.cli snapshot NQ                 # bütün analiz verisi (JSON)
 uv run python -m futures_analyzer.cli report NQ                   # Claude raporu (ANTHROPIC_API_KEY gerekir, kaydedilir)
+uv run python -m futures_analyzer.cli prompt NQ                   # API anahtarı olmadan: claude.ai için prompt dosyası
+uv run python -m futures_analyzer.cli check-report 4 rapor.txt    # claude.ai raporunu kontrol et ve kaydet
 uv run python -m futures_analyzer.cli record                      # analizleri Claude'suz kaydet
 uv run python -m futures_analyzer.cli evaluate                    # kayıtların sonuçlarını ölç ve özetle
 uv run python -m futures_analyzer.cli backtest NQ --days 50 --step 4h --csv nq.csv
@@ -171,6 +173,17 @@ Toplam -100 ile +100 arasıdır; |toplam| < 15 ise bias nötrdür. Skor olasıl�
 Senaryolar: tetik = en yakın direnç/destek zone'unun kenarı (fiyat bir zone'un içindeyse o zone), hedefler = tetikten ve birbirinden en az yarım ATR uzak sonraki iki zone, invalidation = karşı tetik. Her senaryonun risk faktörleri, ona ters düşen skor bileşenleri ve olay riskidir.
 
 ## Claude raporu
+
+### API anahtarı olmadan (claude.ai ile, ek ücret yok)
+
+1. `uv run python -m futures_analyzer.cli prompt NQ` analizi kaydeder ve `prompts/NQ_<no>.txt` dosyasını yazar (talimatlar + veri).
+2. Dosyanın içeriğinin tamamını claude.ai'de yeni bir sohbete yapıştırın.
+3. Claude'un raporunu bir metin dosyasına kaydedin, örn. `prompts/rapor.txt`.
+4. `uv run python -m futures_analyzer.cli check-report <no> prompts/rapor.txt` rapordaki fiyatları veriyle karşılaştırır ve raporu analiz kaydına ekler (dashboard'da görünür). Veride olmayan fiyat varsa Claude'a yapıştırılacak düzeltme mesajını yazdırır.
+
+`prompts/` klasörü GitHub'a gönderilmez.
+
+### API anahtarıyla (otomatik)
 
 `report` komutu snapshot'ı Claude'a gönderir ve standart formatta Türkçe rapor yazdırır. Anahtar `.env` dosyasına `ANTHROPIC_API_KEY=...` olarak eklenir; model `ANTHROPIC_MODEL` ile değiştirilebilir (varsayılan `claude-opus-5`).
 

@@ -10,6 +10,8 @@
     python -m futures_analyzer.cli fetch-all                 # hepsi
     python -m futures_analyzer.cli snapshot NQ
     python -m futures_analyzer.cli report NQ                 # Claude raporu (kaydedilir)
+    python -m futures_analyzer.cli prompt NQ                 # API anahtarı olmadan: claude.ai için prompt
+    python -m futures_analyzer.cli check-report 12 rapor.txt # claude.ai raporunu kontrol et
     python -m futures_analyzer.cli record                    # analizleri Claude'suz kaydet
     python -m futures_analyzer.cli evaluate                  # kayıtların sonuçlarını ölç
     python -m futures_analyzer.cli backtest NQ --days 30 --step 4h
@@ -18,9 +20,11 @@
 import argparse
 import json
 import logging
+from pathlib import Path
 
 import pandas as pd
 
+from futures_analyzer.ai.manual import check_manual_report, manual_prompt
 from futures_analyzer.ai.report import ReportError, generate_report
 from futures_analyzer.analysis import load_market_data, market_snapshot
 from futures_analyzer.evaluation.backtest import records_to_frame, run_backtest
@@ -120,6 +124,38 @@ def cmd_report(args: argparse.Namespace) -> None:
         print(f"!! UYARI: raporda veride olmayan sayılar var: {', '.join(report['unknown_numbers'])}")
 
 
+def cmd_prompt(args: argparse.Namespace) -> None:
+    """API anahtarı olmadan: talimat + veriyi dosyaya yazar, claude.ai'ye yapıştırılır."""
+    instrument = get_instrument(args.symbol)
+    engine = get_engine()
+    create_tables(engine)
+    snapshot = market_snapshot(engine, instrument.symbol)
+    analysis_id = record_analysis(engine, snapshot)
+
+    out = Path(args.out or f"prompts/{instrument.symbol}_{analysis_id}.txt")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(manual_prompt(snapshot), encoding="utf-8")
+    print(f"Analiz #{analysis_id} kaydedildi. Prompt dosyası: {out}")
+    print("1) Dosyanın içeriğinin tamamını claude.ai'de yeni bir sohbete yapıştırın.")
+    print("2) Claude'un raporunu bir dosyaya kaydedin (örn. rapor.txt).")
+    print(f"3) Kontrol edin: uv run python -m futures_analyzer.cli check-report {analysis_id} rapor.txt")
+
+
+def cmd_check_report(args: argparse.Namespace) -> None:
+    text = Path(args.file).read_text(encoding="utf-8")
+    try:
+        result = check_manual_report(get_engine(), args.id, text)
+    except ValueError as error:
+        print(error)
+        raise SystemExit(1)
+    if result["validated"]:
+        print(f"Rapor doğrulandı: bütün fiyatlar veride var. Analiz #{args.id} kaydına eklendi.")
+        return
+    print(f"UYARI: raporda veride olmayan fiyatlar var: {', '.join(result['unknown_numbers'])}")
+    print("Rapor 'doğrulanmadı' olarak kaydedildi. Claude'a aynı sohbette şunu yazıp yeni raporu tekrar kontrol edin:\n")
+    print(result["correction"])
+
+
 def cmd_record(args: argparse.Namespace) -> None:
     """Claude olmadan, sadece deterministik analizi kaydeder (backtest günlüğü için)."""
     engine = get_engine()
@@ -209,6 +245,16 @@ def main() -> None:
     report = sub.add_parser("report", help="Claude ile analiz raporu üret (ANTHROPIC_API_KEY gerekir)")
     report.add_argument("symbol")
     report.set_defaults(func=cmd_report)
+
+    prompt = sub.add_parser("prompt", help="API anahtarı olmadan: claude.ai'ye yapıştırılacak prompt dosyası üret")
+    prompt.add_argument("symbol")
+    prompt.add_argument("--out", help="Dosya yolu (varsayılan: prompts/<sembol>_<kayıt no>.txt)")
+    prompt.set_defaults(func=cmd_prompt)
+
+    check = sub.add_parser("check-report", help="claude.ai'den gelen raporu kontrol et ve analize ekle")
+    check.add_argument("id", type=int, help="prompt komutunun verdiği analiz numarası")
+    check.add_argument("file", help="Raporun kaydedildiği metin dosyası")
+    check.set_defaults(func=cmd_check_report)
 
     record = sub.add_parser("record", help="Analizi (Claude olmadan) kaydet; sembol verilmezse hepsi")
     record.add_argument("symbol", nargs="?")
