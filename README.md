@@ -15,6 +15,7 @@ NQ, ES ve GC futures piyasaları için analiz asistanı.
 - Faz 7 (makro) tamamlandı: Fed faizi, 2Y/10Y, eğri, reel faiz, CPI/PPI/PCE, NFP, işsizlik, GSYH (FRED).
 - Faz 8 (intermarket) tamamlandı: ES/NQ/YM/RTY/DXY/US10Y/US02Y/VIX (NQ, ES), DXY/US10Y/reel faiz/SI (GC), korelasyon, SMT.
 - Faz 9 (haber ve ekonomik takvim) tamamlandı: olay riski, yeni açıklanan veriler, resmi kaynaklardan haberler.
+- Faz 10 (senaryo motoru ve skor) tamamlandı: ağırlıklı skor, bullish/bearish/neutral senaryolar.
 
 ## Kurulum
 
@@ -132,3 +133,22 @@ Her ilişkili varlığın günlük değişimi (faizlerde baz puan) önceki işle
 - Haberler: Fed basın açıklamaları, Fed konuşmaları, BEA (RSS). BLS ve CNBC otomatik erişimi engelliyor. Yeni kaynak `news/feeds.py` içindeki `FEEDS` sözlüğüne eklenebilir.
 - Haber etkisi başlıktaki anahtar kelimelere göre kaba bir sınıflandırmadır (`confidence: low`); yönü belirsiz olanlar `unclear` olarak işaretlenir.
 - Siteler User-Agent başlığına farklı tepki verdiği için bütün istekler `http.py` üzerinden yapılır.
+
+## Skor ve senaryolar
+
+Skor Python'da hesaplanır; her bileşen -1 (bearish) ile +1 (bullish) arası bir değer alır ve ağırlığıyla çarpılır:
+
+| Bileşen | Ağırlık | Nasıl |
+|---|---|---|
+| Trend | 20 | EMA trendi: 1D %40, 4H %35, 1H %25 |
+| Market structure | 20 | Son BOS/CHoCH yönü: 4H %50, 1H %30, 15M %20 |
+| Likidite | 15 | Premium/discount, son sweep, son displacement |
+| Hacim | 10 | Son 5 kapanmış 1H mumda yükselen/düşen mum hacmi dengesi |
+| VWAP | 10 | 15M fiyat seans VWAP'ının üstünde/altında |
+| Makro | 10 | 10Y faizin (GC için reel faizin) 20 günlük değişimi; artış olumsuz |
+| Intermarket | 10 | İlişkili varlıkların bugünkü yönü, SMT uyumsuzluğu |
+| Haber | 5 | Son 24 saatte yönlü başlıklar (düşük güven) |
+
+Toplam -100 ile +100 arasıdır; |toplam| < 15 ise bias nötrdür. Skor olasılık değildir, kanıtların yön uyumudur. `coverage` kaç puanlık ağırlığın gerçekten hesaplanabildiğini gösterir.
+
+Senaryolar: tetik = en yakın direnç/destek zone'unun kenarı (fiyat bir zone'un içindeyse o zone), hedefler = tetikten ve birbirinden en az yarım ATR uzak sonraki iki zone, invalidation = karşı tetik. Her senaryonun risk faktörleri, ona ters düşen skor bileşenleri ve olay riskidir.

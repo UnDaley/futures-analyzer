@@ -6,6 +6,7 @@
 - macro: faizler, enflasyon, istihdam, büyüme (Faz 7)
 - intermarket: ilişkili varlıklarla uyum, korelasyon, SMT (Faz 8)
 - news: ekonomik takvim / olay riski ve resmi kaynaklardan haberler (Faz 9)
+- score + scenarios: ağırlıklı analiz skoru ve bullish / bearish / neutral senaryolar (Faz 10)
 - timeframes: her zaman dilimi için
     - technical: gösterge değerleri (Faz 2)
     - structure: swing'ler, HH/HL, BOS/CHoCH (Faz 3)
@@ -25,6 +26,8 @@ from futures_analyzer.macro.engine import macro_snapshot
 from futures_analyzer.macro.ingest import load_macro
 from futures_analyzer.market_time import drop_incomplete_last_bar
 from futures_analyzer.news.engine import news_snapshot
+from futures_analyzer.scenarios.builder import build_scenarios
+from futures_analyzer.scenarios.scoring import score_snapshot
 from futures_analyzer.sessions.engine import session_levels, sessions_snapshot
 from futures_analyzer.structure.engine import structure_snapshot
 
@@ -55,7 +58,7 @@ def market_snapshot(db: Engine, symbol: str) -> dict:
 
     sessions = sessions_snapshot(candles["5m"], instrument)
     price = float(candles["5m"]["close"].iloc[-1]) if not candles["5m"].empty else None
-    return {
+    snapshot = {
         "instrument": instrument.symbol,
         "data_source": "yfinance (10-15 dk gecikmeli)",
         "price": price,
@@ -67,3 +70,7 @@ def market_snapshot(db: Engine, symbol: str) -> dict:
         "news": news_snapshot(db, instrument.symbol),
         "timeframes": timeframes,
     }
+    score = score_snapshot(snapshot, candles["1h"])
+    snapshot["score"] = score
+    snapshot["scenarios"] = build_scenarios(snapshot, score)
+    return snapshot
