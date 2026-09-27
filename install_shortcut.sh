@@ -8,9 +8,9 @@ chmod +x "$PROJECT/start.sh"
 ENTRY="[Desktop Entry]
 Type=Application
 Name=Futures Analyzer
-Comment=Futures piyasa analiz asistanı (işlem açmaz)
+Comment=NQ / ES / GC için 10am modeli analiz asistanı (işlem açmaz)
 Exec=bash -l \"$PROJECT/start.sh\" --pause
-Icon=utilities-system-monitor
+Icon=$PROJECT/src/futures_analyzer/web/icon.svg
 Terminal=true
 Categories=Office;Finance;"
 

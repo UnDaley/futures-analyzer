@@ -1,3 +1,6 @@
+# Proje adı sabit: klasör adı farklı olsa da (örn. futuresanalyzer) aynı veritabanı kullanılır
+name: futures-analyzer
+
 services:
   postgres:
     image: postgres:16

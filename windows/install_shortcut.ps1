@@ -11,8 +11,8 @@ foreach ($Folder in $Places) {
     $Link = $Shell.CreateShortcut((Join-Path $Folder "Futures Analyzer.lnk"))
     $Link.TargetPath = $Target
     $Link.WorkingDirectory = $Project
-    $Link.IconLocation = "$env:SystemRoot\System32\imageres.dll,144"
-    $Link.Description = "Futures piyasa analiz asistanı (işlem açmaz)"
+    $Link.IconLocation = (Join-Path $Project "windows\icon.ico") + ",0"
+    $Link.Description = "NQ / ES / GC için 10am modeli analiz asistanı (işlem açmaz)"
     $Link.Save()
     Write-Host "Kısayol eklendi: $Folder"
 }
