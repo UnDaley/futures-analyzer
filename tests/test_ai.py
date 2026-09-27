@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from futures_analyzer.ai.prompt import SYSTEM_PROMPT, build_user_message
+from futures_analyzer.ai.prompt import REPORT_HISTORY_DAYS, SYSTEM_PROMPT, build_user_message, report_data
 from futures_analyzer.ai.report import FALLBACK_BETA, ReportError, generate_report
 from futures_analyzer.ai.validation import find_unknown_prices, parse_numbers, snapshot_numbers
 
@@ -64,6 +64,16 @@ def test_user_message_is_deterministic():
     b = build_user_message({"a": 2, "instrument": "NQ", "b": 1})
 
     assert a == b
+
+
+def test_report_data_keeps_only_recent_history_days():
+    snapshot = {"instrument": "NQ", "history": {"stats": {"days": 30}, "days": [{"date": str(i)} for i in range(30)]}}
+
+    data = report_data(snapshot)
+
+    assert len(data["history"]["days"]) == REPORT_HISTORY_DAYS
+    assert data["history"]["stats"] == {"days": 30}
+    assert len(snapshot["history"]["days"]) == 30  # orijinal snapshot değişmez
 
 
 # --- Sahte Claude istemcisi ---

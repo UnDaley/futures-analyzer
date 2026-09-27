@@ -1,124 +1,141 @@
-"""Kontratın analiz özetini (snapshot) üretir. Claude'a giden JSON budur.
+"""Kontratın 10am modeli özetini (snapshot) üretir. Dashboard ve Claude'a giden JSON budur.
 
 Bölümler:
-- timeframes: her zaman dilimi için technical (Faz 2) ve structure (Faz 3)
-- levels: destek / direnç zone'ları ve referans seviyeler (Faz 4)
-- sessions: Asya / Londra / New York high-low, NY açılışı (Faz 5)
-- liquidity: BSL/SSL, sweep, FVG, displacement, order block, premium/discount (Faz 6)
-- macro: faizler, enflasyon, istihdam, büyüme (Faz 7)
-- intermarket: ilişkili varlıklarla uyum, korelasyon, SMT (Faz 8)
-- news: ekonomik takvim / olay riski ve resmi kaynaklardan haberler (Faz 9)
-- score + scenarios: ağırlıklı analiz skoru ve bullish / bearish / neutral senaryolar (Faz 10)
+- setup: bugünkü 10am setup'ının durumu, seviyeleri ve sıradaki adım (strategy/ten_am.py)
+- levels: bugünün likidite seviyeleri (önceki gün, Asya, Londra, 08:00-10:00, 10:00 sonrası)
+- events: bugünkü ekonomik veriler ve en yakın olay riski
+- history: son günlerin setup sonuçları ve istatistikleri
 
-İki adım:
-- load_market_data: veritabanından her şeyi okur
-- build_snapshot: verilen `now` anına kadar bilinen veriyle snapshot'ı hesaplar.
-  Canlı analiz ve geçmişe dönük backtest (Faz 12) aynı fonksiyonu kullanır.
+build_snapshot yalnızca `now` anından önceki veriyle çalışır; testlerde ve geçmiş günler için
+aynı fonksiyon kullanılır.
 """
 
-from dataclasses import dataclass
+from datetime import timedelta
 
 import pandas as pd
 from sqlalchemy import Engine
 
-from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.data.storage import load_candles
-from futures_analyzer.indicators.engine import add_indicators, latest_snapshot
 from futures_analyzer.instruments import Instrument, get_instrument
-from futures_analyzer.intermarket.engine import RELATIONSHIPS, SMT_PAIRS, intermarket_snapshot
-from futures_analyzer.levels.engine import levels_snapshot
-from futures_analyzer.liquidity.engine import liquidity_snapshot
-from futures_analyzer.macro.engine import macro_snapshot
-from futures_analyzer.macro.ingest import load_macro
-from futures_analyzer.market_time import drop_incomplete_last_bar
-from futures_analyzer.news.engine import news_snapshot
-from futures_analyzer.scenarios.builder import build_scenarios
-from futures_analyzer.scenarios.scoring import score_snapshot
-from futures_analyzer.sessions.engine import session_levels, sessions_snapshot
-from futures_analyzer.structure.engine import structure_snapshot
+from futures_analyzer.market_time import NEW_YORK, is_market_open
+from futures_analyzer.news.engine import events_snapshot
+from futures_analyzer.strategy.ten_am import (
+    BEFORE_OPEN,
+    BROKEN,
+    IN_TRADE,
+    MANIPULATION,
+    WAITING,
+    liquidity_levels,
+    recent_days,
+    summarize,
+    ten_am_day,
+)
 
-DATA_SOURCE = "yfinance (10-15 dk gecikmeli)"
-
-
-@dataclass
-class MarketData:
-    instrument: Instrument
-    candles: dict[str, pd.DataFrame]            # zaman dilimi -> kontratın mumları
-    related_hourly: dict[str, pd.DataFrame]     # ilişkili sembol -> 1H mumlar
-    macro: dict[str, pd.Series]                 # makro seriler
-
-
-def load_market_data(db: Engine, symbol: str) -> MarketData:
-    instrument = get_instrument(symbol)
-    related = {*RELATIONSHIPS.get(instrument.symbol, {}), SMT_PAIRS.get(instrument.symbol)} - {None}
-    return MarketData(
-        instrument=instrument,
-        candles={timeframe: load_candles(db, instrument.symbol, timeframe) for timeframe in TIMEFRAMES},
-        related_hourly={other: load_candles(db, other, "1h") for other in related},
-        macro=load_macro(db),
-    )
+DATA_SOURCE = "yfinance (10-15 dk gecikmeli, 5 dakikalık mumlar)"
+HISTORY_DAYS = 60
+# Grafikte ve raporda gösterilen seviyeler (5M swing'ler kalabalık yaptığı için hariç)
+KEY_LEVEL_PREFIXES = ("Önceki gün", "Asya", "Londra", "08:00-10:00")
 
 
 def market_snapshot(db: Engine, symbol: str) -> dict:
-    """Şu anki analiz özeti."""
-    data = load_market_data(db, symbol)
+    """Şu anki özet."""
+    instrument = get_instrument(symbol)
     now = pd.Timestamp.now(tz="UTC")
-    return build_snapshot(data, now, news=news_snapshot(db, data.instrument.symbol, now))
+    return build_snapshot(load_candles(db, instrument.symbol, "5m"), instrument, now, events=events_snapshot(db, now))
 
 
-def build_snapshot(data: MarketData, now: pd.Timestamp, news: dict | None = None, max_bars: int | None = None) -> dict:
-    """`now` anından ÖNCE başlamış mumlarla snapshot. max_bars: hız için her tablonun son N mumu."""
-    instrument = data.instrument
-    candles = {tf: _until(df, now, max_bars) for tf, df in data.candles.items()}
-    macro = {name: _series_until(series, now) for name, series in data.macro.items()}
-    hourly_by_symbol = {instrument.symbol: candles["1h"]}
-    hourly_by_symbol.update({other: _until(df, now, max_bars) for other, df in data.related_hourly.items()})
+def build_snapshot(five_min: pd.DataFrame, instrument: Instrument, now: pd.Timestamp, events: dict | None = None) -> dict:
+    five_min = five_min[five_min.index < now]
+    price = float(five_min["close"].iloc[-1]) if not five_min.empty else None
+    day = _session_day(now)
 
-    timeframes = {}
-    for timeframe, df in candles.items():
-        if df.empty:
-            timeframes[timeframe] = None
-            continue
-        # Göstergeler son (açık olabilen) mumu da gösterir; bu durum last_bar_complete ile belirtilir.
-        # Yapı ise kapanışlara dayandığı için sadece kapanmış mumlarla hesaplanır.
-        closed = drop_incomplete_last_bar(df, timeframe, now)
-        timeframes[timeframe] = {
-            "technical": latest_snapshot(add_indicators(df, timeframe), timeframe, now),
-            "structure": structure_snapshot(closed, timeframe) if len(closed) else None,
-        }
+    setup = ten_am_day(five_min, day, instrument, now)
+    setup["next"] = next_step(setup, instrument)
+    history = recent_days(five_min, instrument, now, HISTORY_DAYS, before=day)
 
-    five_min = candles["5m"]
-    # Fiyat: en ayrıntılı (en güncel) zaman diliminin son kapanışı
-    latest = next((candles[tf] for tf in ("5m", "15m", "1h") if not candles[tf].empty), None)
-    price = float(latest["close"].iloc[-1]) if latest is not None else None
-    sessions = sessions_snapshot(five_min, instrument, now) if not five_min.empty else None
-    snapshot = {
+    return {
         "instrument": instrument.symbol,
         "as_of": now.isoformat(),
         "data_source": DATA_SOURCE,
         "price": price,
-        "sessions": sessions,
-        "levels": levels_snapshot(candles, instrument, extra_levels=session_levels(sessions), now=now),
-        "liquidity": liquidity_snapshot(candles, price, now) if price is not None else None,
-        "macro": macro_snapshot(macro),
-        "intermarket": intermarket_snapshot(instrument.symbol, hourly_by_symbol, macro),
-        "news": news,
-        "timeframes": timeframes,
+        "last_bar_ts": five_min.index[-1].isoformat() if not five_min.empty else None,
+        "market_open": is_market_open(now),
+        "setup": setup,
+        "levels": key_levels(five_min, day, now, setup),
+        "events": events,
+        "history": {"stats": summarize(history), "days": [_compact(result) for result in history]},
     }
-    score = score_snapshot(snapshot, candles["1h"], now)
-    snapshot["score"] = score
-    snapshot["scenarios"] = build_scenarios(snapshot, score)
-    return snapshot
 
 
-def _until(df: pd.DataFrame, now: pd.Timestamp, max_bars: int | None) -> pd.DataFrame:
-    df = df[df.index < now]
-    return df.tail(max_bars) if max_bars else df
+def key_levels(five_min: pd.DataFrame, day, now: pd.Timestamp, setup: dict) -> list[dict]:
+    """Bugünün önemli seviyeleri, yüksekten düşüğe."""
+    levels = [
+        {"name": level["name"], "price": level["price"]}
+        for level in liquidity_levels(five_min, day, now)
+        if level["name"].startswith(KEY_LEVEL_PREFIXES)
+    ]
+    if setup["open_level"] is not None:
+        levels.append({"name": "10:00 açılışı", "price": setup["open_level"]})
+    return sorted(levels, key=lambda level: -level["price"])
 
 
-def _series_until(series: pd.Series, now: pd.Timestamp) -> pd.Series:
-    """Makro seriler günlük tarihlidir; o günün değeri genelde ertesi gün yayınlanır, bu yüzden
-    sadece `now` gününden ÖNCEKİ tarihler kullanılır."""
-    if series.empty:
-        return series
-    return series[series.index < now.tz_convert("UTC").tz_localize(None).normalize()]
+def next_step(setup: dict, instrument: Instrument) -> str:
+    """Şu an neyin izlenmesi gerektiği (düz Türkçe)."""
+    def p(value: float) -> str:
+        return price_text(value, instrument.tick_size)
+
+    status, level, trap = setup["status"], setup["open_level"], instrument.trap_points
+    short = setup["direction"] == "short"
+    if status == BEFORE_OPEN:
+        return (f"10:00 mumunun açılışı bekleniyor. Açılış işaretlendikten sonra fiyatın açılıştan en az "
+                f"{trap:g} puan uzaklaşması manipülasyon sayılır.")
+    if status == WAITING:
+        return (f"Açılış {p(level)}. Fiyat {p(level + trap)} üstüne çıkarsa short, {p(level - trap)} altına inerse "
+                f"long setup hazırlanır. 12:00'ye kadar geçerli.")
+    if status == MANIPULATION:
+        extreme = setup["manipulation"]["extreme"]
+        where = "altında" if short else "üstünde"
+        return (f"{'Yukarı' if short else 'Aşağı'} manipülasyon oldu (uç {p(extreme)}). Bir 5M mumun {p(level)} {where} "
+                f"kapanması bekleniyor; 12:00'ye kadar olmazsa bugün setup yok.")
+    if status == BROKEN:
+        where = "altında" if short else "üstünde"
+        return (f"Açılış geri kırıldı. Fiyatın {p(level)} seviyesine geri dokunup {where} kapanması (retest) bekleniyor. "
+                f"Stop manipülasyon ucunun ötesinde olur ({p(setup['manipulation']['extreme'])}).")
+    if status == IN_TRADE:
+        target = setup["target"]
+        return (f"{'Short' if short else 'Long'} setup aktif: giriş {p(setup['entry']['price'])}, stop {p(setup['stop'])}, "
+                f"hedef {p(target['price'])} ({target['source']}), R:R {setup['rr']:g}.")
+    result = setup["status_text"]
+    if setup["r_multiple"] is not None:
+        result += f" ({setup['r_multiple']:+g}R)"
+    return f"Bugün tamamlandı: {result}. Sıradaki setup bir sonraki işlem gününde 10:00'da."
+
+
+def price_text(value: float, tick_size: float) -> str:
+    decimals = len(f"{tick_size:g}".partition(".")[2])
+    return f"{value:.{decimals}f}"
+
+
+def _session_day(now: pd.Timestamp):
+    """Bugün (New York tarihi); hafta sonuysa son cuma."""
+    day = now.tz_convert(NEW_YORK).date()
+    while day.weekday() >= 5:
+        day -= timedelta(days=1)
+    return day
+
+
+def _compact(result: dict) -> dict:
+    """Geçmiş tablosu için kısa özet."""
+    return {
+        "date": result["date"],
+        "status": result["status"],
+        "status_text": result["status_text"],
+        "direction": result["direction"],
+        "open_level": result["open_level"],
+        "entry": result["entry"]["price"] if result["entry"] else None,
+        "entry_ts": result["entry"]["ts"] if result["entry"] else None,
+        "stop": result["stop"],
+        "target": result["target"]["price"] if result["target"] else None,
+        "target_source": result["target"]["source"] if result["target"] else None,
+        "r_multiple": result["r_multiple"],
+    }

@@ -1,11 +1,10 @@
 """Veritabanı tabloları ve okuma / yazma fonksiyonları.
 
 - candles: mumlar, (symbol, timeframe, ts) birincil anahtar
-- macro_series: FRED makro serileri
-- economic_events, news_items: ekonomik takvim ve haberler
-- analyses: kaydedilen analizler ve ölçülen sonuçları
+- economic_events: ekonomik takvim
+- reports: Claude raporları ve rapor anındaki snapshot
 
-Mumlar, makro değerler, olaylar ve haberler tekrar kaydedilirse satır çoğalmaz, güncellenir (upsert).
+Mumlar ve olaylar tekrar kaydedilirse satır çoğalmaz, güncellenir (upsert).
 Bu sayede henüz kapanmamış son mum da sonraki çekişte düzelir.
 """
 
@@ -99,45 +98,7 @@ def load_candles(engine: Engine, symbol: str, timeframe: str, limit: int | None 
     return df.set_index("ts").sort_index()
 
 
-# --- Makro seriler (FRED) ---
-
-macro_table = Table(
-    "macro_series",
-    metadata,
-    Column("series_id", String(32), primary_key=True),
-    Column("date", DateTime, primary_key=True),
-    Column("value", Float, nullable=False),
-)
-
-
-def save_macro_series(engine: Engine, series_id: str, series: pd.Series) -> int:
-    """Makro seriyi kaydeder (varsa günceller). Kaydedilen satır sayısını döndürür."""
-    if series.empty:
-        return 0
-    rows = [{"series_id": series_id, "date": date.to_pydatetime(), "value": float(value)} for date, value in series.items()]
-    dialect = postgresql if engine.dialect.name == "postgresql" else sqlite
-    stmt = dialect.insert(macro_table)
-    stmt = stmt.on_conflict_do_update(index_elements=["series_id", "date"], set_={"value": stmt.excluded.value})
-    with engine.begin() as conn:
-        conn.execute(stmt, rows)
-    return len(rows)
-
-
-def load_macro_series(engine: Engine, series_id: str) -> pd.Series:
-    query = (
-        select(macro_table.c.date, macro_table.c.value)
-        .where(macro_table.c.series_id == series_id)
-        .order_by(macro_table.c.date)
-    )
-    with engine.connect() as conn:
-        rows = conn.execute(query).all()
-    if not rows:
-        return pd.Series(dtype=float)
-    dates, values = zip(*rows)
-    return pd.Series(values, index=pd.DatetimeIndex(dates, name="date"), dtype=float)
-
-
-# --- Ekonomik takvim ve haberler ---
+# --- Ekonomik takvim ---
 
 events_table = Table(
     "economic_events",
@@ -148,18 +109,6 @@ events_table = Table(
     Column("forecast", String(32)),
     Column("previous", String(32)),
 )
-
-news_table = Table(
-    "news_items",
-    metadata,
-    Column("id", String(32), primary_key=True),
-    Column("ts", DateTime(timezone=True), nullable=False),
-    Column("source", String(64), nullable=False),
-    Column("title", String(500), nullable=False),
-    Column("link", String(500)),
-    Column("analysis", JSON),
-)
-
 
 def _upsert(engine: Engine, table: Table, rows: list[dict], keys: list[str]) -> int:
     if not rows:
@@ -184,82 +133,75 @@ def load_events(engine: Engine) -> list[dict]:
     return [{**row, "ts": _as_utc(row["ts"])} for row in rows]
 
 
-def save_news(engine: Engine, items: list[dict]) -> int:
-    rows = [{**item, "ts": item["ts"].to_pydatetime()} for item in items]
-    return _upsert(engine, news_table, rows, ["id"])
-
-
-def load_news(engine: Engine, since: pd.Timestamp) -> list[dict]:
-    query = select(news_table).where(news_table.c.ts >= since.to_pydatetime()).order_by(news_table.c.ts.desc())
-    with engine.connect() as conn:
-        rows = conn.execute(query).mappings().all()
-    return [{**row, "ts": _as_utc(row["ts"])} for row in rows]
-
-
 def _as_utc(value) -> pd.Timestamp:
     """SQLite saat dilimini saklamaz; kaydettiğimiz her şey UTC olduğu için UTC kabul ediyoruz."""
     ts = pd.Timestamp(value)
     return ts.tz_localize("UTC") if ts.tz is None else ts.tz_convert("UTC")
 
 
-# --- Analiz kayıtları (Faz 12: backtest / değerlendirme) ---
+# --- Claude raporları ---
 
-analyses_table = Table(
-    "analyses",
+reports_table = Table(
+    "reports",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("created_at", DateTime(timezone=True), nullable=False),
     Column("as_of", DateTime(timezone=True), nullable=False),
     Column("instrument", String(16), nullable=False),
     Column("price", Float),
-    Column("bias", String(16), nullable=False),
-    Column("score_total", Float, nullable=False),
-    Column("coverage", Integer, nullable=False),
-    Column("scenarios", JSON),
+    Column("setup_status", String(32)),
     Column("snapshot", JSON),
     Column("report_text", Text),
     Column("report_model", String(64)),
     Column("report_validated", Boolean),
-    Column("evaluation", JSON),
 )
 
 
-def save_analysis(engine: Engine, row: dict) -> int:
+def save_report(engine: Engine, snapshot: dict, report: dict | None = None) -> int:
+    """Snapshot'ı (ve varsa Claude raporunu) kaydeder. Kayıt numarasını döndürür."""
+    row = {
+        "created_at": pd.Timestamp.now(tz="UTC").to_pydatetime(),
+        "as_of": pd.Timestamp(snapshot["as_of"]).to_pydatetime(),
+        "instrument": snapshot["instrument"],
+        "price": snapshot["price"],
+        "setup_status": snapshot["setup"]["status"],
+        "snapshot": snapshot,
+        "report_text": report["text"] if report else None,
+        "report_model": report["model"] if report else None,
+        "report_validated": report["validated"] if report else None,
+    }
     with engine.begin() as conn:
-        result = conn.execute(analyses_table.insert().values(**row))
+        result = conn.execute(reports_table.insert().values(**row))
         return int(result.inserted_primary_key[0])
 
 
-def load_analyses(engine: Engine, instrument: str | None = None, limit: int | None = None) -> list[dict]:
-    query = select(analyses_table).order_by(analyses_table.c.as_of.desc())
+def load_reports(engine: Engine, instrument: str | None = None, limit: int | None = None) -> list[dict]:
+    """Rapor metni olan kayıtlar, yeniden eskiye."""
+    query = select(reports_table).where(reports_table.c.report_text.is_not(None)).order_by(reports_table.c.as_of.desc())
     if instrument:
-        query = query.where(analyses_table.c.instrument == instrument)
+        query = query.where(reports_table.c.instrument == instrument)
     if limit:
         query = query.limit(limit)
     with engine.connect() as conn:
         rows = conn.execute(query).mappings().all()
-    return [{**row, "as_of": _as_utc(row["as_of"]), "created_at": _as_utc(row["created_at"])} for row in rows]
+    return [_report_row(row) for row in rows]
 
 
-def update_evaluation(engine: Engine, analysis_id: int, evaluation: dict) -> None:
-    stmt = analyses_table.update().where(analyses_table.c.id == analysis_id).values(evaluation=evaluation)
-    with engine.begin() as conn:
-        conn.execute(stmt)
-
-
-def load_analysis(engine: Engine, analysis_id: int) -> dict | None:
+def load_report(engine: Engine, report_id: int) -> dict | None:
     with engine.connect() as conn:
-        row = conn.execute(select(analyses_table).where(analyses_table.c.id == analysis_id)).mappings().first()
-    if row is None:
-        return None
-    return {**row, "as_of": _as_utc(row["as_of"]), "created_at": _as_utc(row["created_at"])}
+        row = conn.execute(select(reports_table).where(reports_table.c.id == report_id)).mappings().first()
+    return _report_row(row) if row is not None else None
 
 
-def update_report(engine: Engine, analysis_id: int, text: str, model: str, validated: bool) -> None:
+def update_report(engine: Engine, report_id: int, text: str, model: str, validated: bool) -> None:
     stmt = (
-        analyses_table.update()
-        .where(analyses_table.c.id == analysis_id)
+        reports_table.update()
+        .where(reports_table.c.id == report_id)
         .values(report_text=text, report_model=model, report_validated=validated)
     )
     with engine.begin() as conn:
         conn.execute(stmt)
+
+
+def _report_row(row) -> dict:
+    return {**row, "as_of": _as_utc(row["as_of"]), "created_at": _as_utc(row["created_at"])}

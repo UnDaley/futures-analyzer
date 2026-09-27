@@ -14,7 +14,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, HTTPException, Query
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel
 from sqlalchemy import Engine
 
@@ -23,15 +23,14 @@ from futures_analyzer.ai.report import ReportError, generate_report
 from futures_analyzer.analysis import market_snapshot
 from futures_analyzer.data.providers.base import TIMEFRAMES
 from futures_analyzer.config import settings
-from futures_analyzer.data.storage import create_tables, get_engine, load_analyses, load_candles
-from futures_analyzer.evaluation.journal import evaluate_pending, record_analysis
-from futures_analyzer.evaluation.stats import summarize
+from futures_analyzer.data.storage import create_tables, get_engine, load_candles, load_reports, save_report
 from futures_analyzer.indicators.engine import VWAP_TIMEFRAMES, add_indicators
 from futures_analyzer.instruments import INSTRUMENTS
 from futures_analyzer.refresh import RefreshJob
 
 DASHBOARD = Path(__file__).parent / "web" / "dashboard.html"
-CHART_LINES = ["ema_20", "ema_50", "ema_200", "vwap"]
+ICON = Path(__file__).parent / "web" / "icon.svg"  # sekme simgesi; masaüstü kısayolu da bunu kullanır
+CHART_LINES = ["ema_20", "ema_50", "ema_200", "vwap"]  # grafikte isteğe bağlı
 INDICATOR_WARMUP = 300  # EMA 200'ün oturması için grafikte gösterilenden fazla mum yüklenir
 
 
@@ -80,6 +79,11 @@ def dashboard() -> str:
     return DASHBOARD.read_text(encoding="utf-8")
 
 
+@app.get("/icon.svg")
+def icon() -> FileResponse:
+    return FileResponse(ICON, media_type="image/svg+xml")
+
+
 @app.get("/health")
 def health() -> dict:
     return {"status": "ok"}
@@ -100,7 +104,7 @@ def candles(
 @app.get("/chart")
 def chart(
     symbol: str,
-    tf: str = "15m",
+    tf: str = "5m",
     limit: int = Query(300, ge=10, le=3000),
     engine: Engine = Depends(db_engine),
 ) -> dict:
@@ -133,10 +137,10 @@ def snapshot(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
     return _snapshot_or_409(engine, symbol)
 
 
-@app.get("/analyses")
-def analyses(symbol: str | None = None, limit: int = Query(20, ge=1, le=500), engine: Engine = Depends(db_engine)) -> list[dict]:
-    """Son kayıtlı analizler (büyük snapshot alanı hariç)."""
-    rows = load_analyses(engine, _check_symbol(symbol) if symbol else None, limit=limit)
+@app.get("/reports")
+def reports(symbol: str | None = None, limit: int = Query(5, ge=1, le=100), engine: Engine = Depends(db_engine)) -> list[dict]:
+    """Son Claude raporları (büyük snapshot alanı hariç)."""
+    rows = load_reports(engine, _check_symbol(symbol) if symbol else None, limit=limit)
     return [
         {**{k: v for k, v in row.items() if k != "snapshot"}, "as_of": row["as_of"].isoformat(), "created_at": row["created_at"].isoformat()}
         for row in rows
@@ -151,11 +155,10 @@ def report(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
         result = generate_report(current)
     except ReportError as error:
         raise HTTPException(503, str(error)) from error
-    analysis_id = record_analysis(engine, current, result)
-    return {"id": analysis_id, **result}
+    return {"id": save_report(engine, current, result), **result}
 
 
-# --- Terminalsiz kullanım: güncelleme, claude.ai akışı, kayıt ve değerlendirme ---
+# --- Terminalsiz kullanım: güncelleme ve claude.ai akışı ---
 
 @app.post("/refresh")
 def refresh() -> dict:
@@ -170,9 +173,9 @@ def refresh_status() -> dict:
 
 @app.post("/prompt")
 def prompt(symbol: str, engine: Engine = Depends(db_engine)) -> dict:
-    """Analizi kaydeder ve claude.ai'ye yapıştırılacak metni döndürür."""
+    """Snapshot'ı kaydeder ve claude.ai'ye yapıştırılacak metni döndürür."""
     current = _snapshot_or_409(engine, symbol)
-    return {"id": record_analysis(engine, current), "text": manual_prompt(current)}
+    return {"id": save_report(engine, current), "text": manual_prompt(current)}
 
 
 class ManualReport(BaseModel):
@@ -182,30 +185,10 @@ class ManualReport(BaseModel):
 
 @app.post("/check-report")
 def check_report(report: ManualReport, engine: Engine = Depends(db_engine)) -> dict:
-    """claude.ai'den gelen raporu kontrol eder ve analiz kaydına ekler."""
+    """claude.ai'den gelen raporu kontrol eder ve kayda ekler."""
     if not report.text.strip():
         raise HTTPException(400, "Rapor boş")
     try:
         return check_manual_report(engine, report.id, report.text)
     except ValueError as error:
         raise HTTPException(404, str(error)) from error
-
-
-@app.post("/record")
-def record(symbol: str | None = None, engine: Engine = Depends(db_engine)) -> list[dict]:
-    """Analizi Claude'suz kaydeder (sembol verilmezse hepsi)."""
-    symbols = [_check_symbol(symbol)] if symbol else list(INSTRUMENTS)
-    saved = []
-    for name in symbols:
-        current = market_snapshot(engine, name)
-        if current["price"] is None:
-            continue
-        saved.append({"id": record_analysis(engine, current), "instrument": name, "bias": current["score"]["bias"]})
-    return saved
-
-
-@app.post("/evaluate")
-def evaluate(symbol: str | None = None, engine: Engine = Depends(db_engine)) -> dict:
-    """Zamanı gelen analizlerin sonuçlarını ölçer ve özeti döndürür."""
-    updated = evaluate_pending(engine)
-    return {"updated": updated, "summary": summarize(load_analyses(engine, _check_symbol(symbol) if symbol else None))}

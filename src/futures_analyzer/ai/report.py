@@ -13,7 +13,7 @@ isteği otomatik olarak uygun başka bir modelde tekrar çalıştırır.
 
 import anthropic
 
-from futures_analyzer.ai.prompt import SYSTEM_PROMPT, build_correction_message, build_user_message
+from futures_analyzer.ai.prompt import SYSTEM_PROMPT, build_correction_message, build_user_message, report_data
 from futures_analyzer.ai.validation import find_unknown_prices
 from futures_analyzer.config import settings
 from futures_analyzer.instruments import get_instrument
@@ -44,7 +44,7 @@ def generate_report(snapshot: dict, client=None, model: str | None = None) -> di
         _add_usage(usage, response.usage)
         text = "".join(block.text for block in response.content if block.type == "text").strip()
 
-        unknown = find_unknown_prices(text, snapshot, tick_size)
+        unknown = find_unknown_prices(text, report_data(snapshot), tick_size)
         if not unknown or attempt == 2:
             return {
                 "text": text,

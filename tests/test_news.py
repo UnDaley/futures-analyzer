@@ -1,46 +1,7 @@
 import pandas as pd
 
 from futures_analyzer.news.calendar import calendar_snapshot, explain, normalize_events
-from futures_analyzer.news.engine import ingest_news, news_snapshot
-from futures_analyzer.news.feeds import parse_rss
-from futures_analyzer.news.impact import analyze_headline
-
-RSS = """<?xml version="1.0"?>
-<rss version="2.0"><channel>
-  <item><title>Federal Reserve issues FOMC statement</title>
-        <link>https://www.federalreserve.gov/a.htm</link>
-        <pubDate>Wed, 16 Sep 2026 18:00:00 GMT</pubDate></item>
-  <item><title>Zamanı olmayan haber</title><link>https://x</link></item>
-</channel></rss>"""
-
-
-def test_parse_rss():
-    items = parse_rss(RSS, "Fed")
-
-    assert len(items) == 1  # zamanı olmayan atlandı
-    assert items[0]["title"] == "Federal Reserve issues FOMC statement"
-    assert items[0]["ts"] == pd.Timestamp("2026-09-16 18:00", tz="UTC")
-    assert items[0]["source"] == "Fed"
-
-
-def test_headline_rules():
-    assert analyze_headline("Fed signals rate hike ahead")["assets"]["NQ"] == "negative"
-    assert analyze_headline("Fed signals rate hike ahead")["assets"]["DXY"] == "positive"
-    assert analyze_headline("Fed delivers rate cut")["assets"]["GC"] == "positive"
-    assert analyze_headline("New tariffs announced")["assets"]["GC"] == "positive"
-    assert analyze_headline("Federal Reserve issues FOMC statement")["assets"]["NQ"] == "unclear"  # ilgili, yön belirsiz
-
-
-def test_conflicting_rules_are_unclear():
-    # "rate cut" (dovish: NQ +) ve "tariffs" (risk-off: NQ -) birlikte
-    result = analyze_headline("Rate cut expected despite new tariffs")
-
-    assert result["assets"]["NQ"] == "unclear"
-    assert result["confidence"] == "low"
-
-
-def test_keywords_match_whole_words_only():
-    assert analyze_headline("A shortcut to warmer weather")["assets"] == {}  # "cut", "war" geçmiyor
+from futures_analyzer.news.engine import events_snapshot, ingest_news
 
 
 def raw_event(title, date, impact="High", country="USD"):
@@ -88,23 +49,20 @@ def test_explain():
 
 
 def test_ingest_and_snapshot(engine):
-    feeds = lambda: parse_rss(RSS, "Fed")  # noqa: E731
-    calendar = lambda: [raw_event("CPI m/m", "2026-09-17T08:30:00-04:00")]  # noqa: E731
+    events = [
+        raw_event("CPI m/m", "2026-09-17T08:30:00-04:00"),
+        raw_event("ISM Services PMI", "2026-09-17T10:00:00-04:00", impact="Medium"),
+        raw_event("Retail Sales m/m", "2026-09-18T08:30:00-04:00"),
+    ]
 
-    assert ingest_news(engine, feeds=feeds, calendar=calendar) == {"news": 1, "events": 1}
+    assert ingest_news(engine, calendar=lambda: events) == {"events": 3}
 
-    now = pd.Timestamp("2026-09-17 12:00", tz="UTC")
-    result = news_snapshot(engine, "NQ", now=now)
+    result = events_snapshot(engine, now=pd.Timestamp("2026-09-17 12:00", tz="UTC"))  # NY 08:00
 
-    assert result["headlines"][0]["title"] == "Federal Reserve issues FOMC statement"
-    assert result["headlines"][0]["hours_ago"] == 18.0
-    assert result["headlines"][0]["possible_impact"] == "unclear"
-    assert result["calendar"]["event_risk"]["minutes_until"] == 30
-    assert result["calendar"]["event_risk"]["imminent"] is True
-
-
-def test_snapshot_ignores_future_and_old_news(engine):
-    ingest_news(engine, feeds=lambda: parse_rss(RSS, "Fed"), calendar=lambda: [])
-
-    assert news_snapshot(engine, "NQ", now=pd.Timestamp("2026-09-16 12:00", tz="UTC"))["headlines"] == []  # henüz yayınlanmadı
-    assert news_snapshot(engine, "NQ", now=pd.Timestamp("2026-09-20 12:00", tz="UTC"))["headlines"] == []  # 48 saatten eski
+    assert result["event_risk"]["title"] == "CPI m/m"
+    assert result["event_risk"]["imminent"] is True
+    today = {event["title"]: event for event in result["today"]}
+    assert set(today) == {"CPI m/m", "ISM Services PMI"}  # yarınki olay bugünün listesinde yok
+    assert today["ISM Services PMI"]["near_open"] is True  # 10:00'da açıklanıyor
+    assert today["CPI m/m"]["near_open"] is False
+    assert today["CPI m/m"]["released"] is False

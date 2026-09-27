@@ -3,98 +3,149 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Futures Analyzer</title>
+<title>10am Model</title>
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
 <script src="https://cdn.jsdelivr.net/npm/lightweight-charts@4.2.0/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   :root {
-    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #667085; --border: #e3e6eb;
-    --up: #16a34a; --down: #dc2626; --neutral: #64748b; --accent: #2563eb; --warn: #b45309;
-    --ema20: #f59e0b; --ema50: #8b5cf6; --ema200: #0ea5e9; --vwap: #db2777;
+    --bg: #eef1f5; --panel: #ffffff; --text: #111827; --muted: #4b5563; --faint: #6b7280; --border: #d5dae1;
+    --up: #15803d; --down: #b91c1c; --neutral: #4b5563; --accent: #1d4ed8; --warn: #a16207;
+    --up-soft: #dcfce7; --down-soft: #fee2e2; --neutral-soft: #e5e7eb; --accent-soft: #dbeafe; --warn-soft: #fef3c7;
+    --ema20: #d97706; --ema50: #7c3aed; --ema200: #0284c7; --vwap: #db2777;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #0f1218; --panel: #171b23; --text: #e6e9ef; --muted: #98a2b3; --border: #2a303b;
-      --up: #22c55e; --down: #f87171; --neutral: #94a3b8; --accent: #60a5fa; --warn: #fbbf24;
+      --bg: #0b0e14; --panel: #151a23; --text: #f3f4f6; --muted: #c1c8d4; --faint: #9aa4b2; --border: #2c3442;
+      --up: #4ade80; --down: #f87171; --neutral: #c1c8d4; --accent: #7aa7ff; --warn: #fbbf24;
+      --up-soft: #12351f; --down-soft: #3f1515; --neutral-soft: #262d39; --accent-soft: #172a4d; --warn-soft: #3a2c0a;
     }
   }
   * { box-sizing: border-box; }
   [hidden] { display: none !important; }
   a { color: var(--accent); }
-  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; padding: 12px 16px; border-bottom: 1px solid var(--border); background: var(--panel); }
-  header h1 { font-size: 17px; margin: 0 8px 0 0; }
-  select, button { font: inherit; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); }
-  button { cursor: pointer; }
-  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.55 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: center;
+    padding: 12px 20px; border-bottom: 1px solid var(--border); background: var(--panel); }
+  header h1 { font-size: 20px; margin: 0; }
+  .segmented { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .segmented button { border: 0; border-radius: 0; padding: 8px 16px; font-weight: 600; background: transparent; }
+  .segmented button + button { border-left: 1px solid var(--border); }
+  .segmented button[aria-pressed="true"] { background: var(--accent); color: #fff; }
+  button, select { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--border);
+    background: var(--panel); color: var(--text); cursor: pointer; }
+  button.primary { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
   button:disabled { opacity: .6; cursor: wait; }
-  .note { color: var(--muted); font-size: 12px; }
-  main { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 16px; padding: 16px; }
-  main > section, main > aside { min-width: 0; }  /* geniş tablolar sütunu taşırmasın */
-  @media (max-width: 1000px) { main { grid-template-columns: minmax(0, 1fr); } }
-  @media (max-width: 600px) { main { padding: 16px 12px; } }
-  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px; margin-bottom: 16px; }
-  .card h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 10px; }
-  #chart { height: 520px; }
-  @media (max-width: 600px) { #chart { height: 360px; } }
-  .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); margin-top: 8px; }
-  .legend span::before { content: ""; display: inline-block; width: 12px; height: 3px; margin-right: 5px; vertical-align: middle; background: var(--c); }
-  .price { font-size: 26px; font-weight: 650; }
-  .bias { display: inline-block; padding: 2px 10px; border-radius: 999px; font-weight: 600; font-size: 13px; }
-  .bullish { color: var(--up); } .bearish { color: var(--down); } .neutral { color: var(--neutral); }
-  .bias.bullish { background: color-mix(in srgb, var(--up) 15%, transparent); }
-  .bias.bearish { background: color-mix(in srgb, var(--down) 15%, transparent); }
-  .bias.neutral { background: color-mix(in srgb, var(--neutral) 15%, transparent); }
-  .comp { display: grid; grid-template-columns: 90px 1fr 48px; gap: 8px; align-items: center; margin: 5px 0; font-size: 13px; }
-  .bar { position: relative; height: 8px; background: var(--bg); border-radius: 4px; }
-  .bar i { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
-  .bar::after { content: ""; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: var(--border); }
-  .scenario { border-left: 3px solid var(--border); padding: 4px 0 4px 10px; margin: 10px 0; }
-  .scenario.bullish { border-color: var(--up); } .scenario.bearish { border-color: var(--down); }
-  .scenario b { color: var(--text); }
-  .scenario div { color: var(--text); font-size: 13px; }
-  .warn { color: var(--warn); font-weight: 600; }
-  table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--border); }
-  th { color: var(--muted); font-weight: 500; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; }
-  pre { white-space: pre-wrap; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; max-height: 520px; overflow: auto; }
-  .kv { display: grid; grid-template-columns: auto 1fr; gap: 3px 12px; font-size: 13px; }
-  .kv dt { color: var(--muted); } .kv dd { margin: 0; font-variant-numeric: tabular-nums; }
-  .table-wrap { overflow-x: auto; }
-  textarea { width: 100%; min-height: 140px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 8px;
-    border-radius: 6px; border: 1px solid var(--border); background: var(--bg); color: var(--text); resize: vertical; }
-  .steps { display: grid; gap: 10px; }
-  .step { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-  .step-no { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
-    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700; }
-  .ok { color: var(--up); font-weight: 600; }
-  .row-buttons { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
-  details summary { cursor: pointer; color: var(--muted); font-size: 12px; margin-top: 8px; }
-  .banner { margin: 16px 16px 0; padding: 10px 14px; border-radius: 8px; font-weight: 600;
-    background: color-mix(in srgb, var(--warn) 18%, var(--panel)); border: 1px solid var(--warn); color: var(--text); }
-  .empty { padding: 40px 16px; text-align: center; color: var(--muted); }
-  .help { margin: 16px 16px 0; }
-  .help summary { font-size: 14px; color: var(--accent); margin: 0; }
-  .help ol { margin: 8px 0 0; padding-left: 20px; }
-  .help li { margin: 4px 0; }
-  .help dl { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; margin: 8px 0 0; font-size: 13px; }
-  .help dt { font-weight: 600; }
-  .help dd { margin: 0; color: var(--muted); }
-  .fresh-warn { color: var(--warn); }
+  .header-status { margin-left: auto; display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .note { color: var(--muted); font-size: 14px; }
+
+  .banner { margin: 16px 20px 0; padding: 12px 16px; border-radius: 10px; font-weight: 600;
+    background: var(--warn-soft); border: 1px solid var(--warn); }
+  main { display: grid; gap: 20px; padding: 20px; max-width: 1500px; margin: 0 auto;
+    grid-template-columns: minmax(0, 1fr) 420px; grid-template-areas: "chart setup" "history side" "report side"; }
+  @media (max-width: 1100px) { main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "setup" "chart" "history" "side" "report"; } }
+  @media (max-width: 600px) { main { padding: 16px; } header { padding: 12px 16px; } .banner { margin: 16px 16px 0; } }
+  .area-setup { grid-area: setup; } .area-chart { grid-area: chart; } .area-history { grid-area: history; }
+  .area-side { grid-area: side; } .area-report { grid-area: report; }
+  main > * { min-width: 0; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 20px; }
+  .area-side .card + .card { margin-top: 20px; }
+  .card h2 { font-size: 18px; margin: 0 0 14px; }
+  .card h2 small { font-weight: 400; color: var(--muted); font-size: 14px; }
+
+  /* Bugünkü setup */
+  .setup-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .price { font-size: 30px; font-weight: 700; }
+  .pill { display: inline-block; padding: 6px 14px; border-radius: 999px; font-weight: 700; font-size: 16px; }
+  .tone-neutral { background: var(--neutral-soft); color: var(--neutral); }
+  .tone-warn { background: var(--warn-soft); color: var(--warn); }
+  .tone-accent { background: var(--accent-soft); color: var(--accent); }
+  .tone-up { background: var(--up-soft); color: var(--up); }
+  .tone-down { background: var(--down-soft); color: var(--down); }
+  .now { font-size: 17px; margin: 14px 0 18px; padding: 12px 14px; border-left: 4px solid var(--accent);
+    background: var(--bg); border-radius: 0 8px 8px 0; }
+  .steps { list-style: none; margin: 0 0 18px; padding: 0; display: grid; gap: 2px; }
+  .steps li { display: grid; grid-template-columns: 30px 1fr auto; gap: 10px; align-items: center; padding: 8px 0;
+    border-bottom: 1px solid var(--border); }
+  .steps li:last-child { border-bottom: 0; }
+  .dot { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; font-size: 14px; font-weight: 700;
+    border: 2px solid var(--border); color: var(--faint); }
+  .steps li.done .dot { background: var(--up); border-color: var(--up); color: #fff; }
+  .steps li.current .dot { border-color: var(--accent); color: var(--accent); }
+  .steps li.current .step-name { font-weight: 700; }
+  .steps li.todo .step-name { color: var(--faint); }
+  .step-detail { color: var(--muted); font-size: 15px; text-align: right; }
+  .figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; }
+  .figure { background: var(--bg); border-radius: 10px; padding: 10px 12px; }
+  .figure span { display: block; color: var(--muted); font-size: 14px; }
+  .figure b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .figure small { display: block; color: var(--muted); font-size: 13px; }
+  .fresh { margin-top: 14px; font-size: 14px; color: var(--muted); }
+  .fresh.warn { color: var(--warn); font-weight: 600; }
+
+  /* Grafik */
+  .chart-bar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 12px; }
+  .chart-bar h2 { margin: 0 auto 0 0; }
+  .toggle { display: inline-flex; gap: 6px; align-items: center; font-size: 15px; color: var(--muted); cursor: pointer; }
+  #chart { height: 560px; }
+  @media (max-width: 600px) { #chart { height: 380px; } }
+  .legend { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; color: var(--muted); margin-top: 12px; }
+  .legend span::before { content: ""; display: inline-block; width: 16px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+
+  /* Geçmiş */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 12px; }
+  .stat { background: var(--bg); border-radius: 10px; padding: 12px 14px; }
+  .stat span { display: block; color: var(--muted); font-size: 14px; }
+  .stat b { font-size: 26px; font-variant-numeric: tabular-nums; }
+  .table-wrap { overflow: auto; max-height: 520px; margin-top: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 600; position: sticky; top: 0; background: var(--panel); }
+  td.num, th.num { text-align: right; }
+  .result { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+  .up { color: var(--up); } .down { color: var(--down); }
+
+  /* Yan panel listeleri */
+  .levels { list-style: none; margin: 0; padding: 0; }
+  .levels li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+  .levels li:last-child { border-bottom: 0; }
+  .levels li.open-level { font-weight: 700; color: var(--accent); }
+  .levels li.price-row { color: var(--muted); font-style: italic; }
+  .levels .dist { color: var(--muted); font-size: 14px; margin-left: 8px; }
+  .event { padding: 10px 0; border-bottom: 1px solid var(--border); }
+  .event:last-child { border-bottom: 0; }
+  .event.near { border-left: 4px solid var(--warn); padding-left: 10px; }
+  .event .why { color: var(--muted); font-size: 14px; }
+
+  /* Rapor ve yardım */
+  details > summary { cursor: pointer; font-weight: 600; }
+  .report-steps { display: grid; gap: 12px; margin-top: 14px; }
+  .report-step { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  .step-no { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 14px; font-weight: 700; }
+  textarea { width: 100%; min-height: 150px; font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px;
+    border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); resize: vertical; }
+  pre { white-space: pre-wrap; font: 15px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; max-height: 560px; overflow: auto; }
+  .ok { color: var(--up); font-weight: 600; } .bad { color: var(--warn); font-weight: 600; }
+  .help { margin: 16px 20px 0; }
+  .help ol { margin: 10px 0 0; padding-left: 22px; } .help li { margin: 6px 0; }
+  .help dl { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 12px 0 0; }
+  .help dt { font-weight: 700; } .help dd { margin: 0; color: var(--muted); }
+  @media (max-width: 600px) { .help { margin: 16px 16px 0; } .help dl { grid-template-columns: 1fr; } }
+  .empty { margin: 20px; padding: 48px 20px; text-align: center; color: var(--muted); font-size: 18px; }
 </style>
 </head>
 <body>
 <header>
-  <h1>Futures Analyzer</h1>
-  <label>Kontrat <select id="symbol"><option>NQ</option><option>ES</option><option>GC</option></select></label>
-  <label>Zaman dilimi <select id="tf">
-    <option value="5m">5M</option><option value="15m" selected>15M</option><option value="1h">1H</option>
-    <option value="4h">4H</option><option value="1d">1D</option>
-  </select></label>
-  <button id="update-data" class="primary" title="Bütün kontratlar, intermarket, makro ve haberler">Verileri güncelle</button>
-  <span class="note" id="data-status"></span>
-  <span class="note" id="status"></span>
-  <span class="note" style="margin-left:auto">Analiz asistanıdır; işlem açmaz, tavsiye vermez. Veri 10-15 dk gecikmeli.</span>
+  <h1>10am Model</h1>
+  <div class="segmented" id="symbols" role="group" aria-label="Kontrat">
+    <button type="button" data-symbol="NQ">NQ</button><button type="button" data-symbol="ES">ES</button><button type="button" data-symbol="GC">GC</button>
+  </div>
+  <div class="header-status">
+    <span class="note" id="data-status"></span>
+    <button id="update-data" class="primary" title="Üç kontratın mumları ve ekonomik takvim">Verileri güncelle</button>
+  </div>
 </header>
 
 <div id="event-banner" class="banner" hidden></div>
@@ -102,107 +153,110 @@
 <details class="card help" id="help">
   <summary>Nasıl kullanılır? · Terimler</summary>
   <ol>
-    <li><b>Veriler</b> sunucu açılınca ve sonra 15 dakikada bir kendiliğinden güncellenir. Hemen güncellemek için "Verileri güncelle".</li>
-    <li>Üstten <b>kontrat</b> ve <b>zaman dilimi</b> seçin. Sağ panelde skor, olay riski, senaryolar ve seviyeler var.</li>
-    <li><b>Claude raporu</b>: "Prompt'u kopyala" → claude.ai'de yeni sohbete yapıştırın → cevabı kutuya yapıştırıp "Kontrol et ve kaydet".</li>
-    <li>Piyasa açıkken analizler saatte bir <b>otomatik kaydedilir</b> ve 1 gün sonra sonuçları otomatik ölçülür. "Sonuçları ölç" ile özeti görün.</li>
-    <li>Bu sistem <b>işlem açmaz ve tavsiye vermez</b>; skor bir olasılık değil, kanıtların yön uyumudur.</li>
+    <li>Üstten <b>kontratı</b> seçin. "Bugünkü setup" kartı modelin şu an hangi adımda olduğunu ve neyi beklediğini yazar.</li>
+    <li>Veriler sunucu açılınca ve 15 dakikada bir kendiliğinden güncellenir. Veri kaynağı <b>10-15 dakika gecikmelidir</b>; canlı işlem için kendi platformunuzdaki fiyatı esas alın.</li>
+    <li>"Geçmiş performans" aynı kuralların son günlerde nasıl sonuç verdiğini gösterir. Örneklem küçüktür; kesin sonuç gibi okumayın.</li>
+    <li>Bu sistem <b>işlem açmaz ve tavsiye vermez</b>. Son karar sizindir.</li>
   </ol>
   <dl>
-    <dt>Skor</dt><dd>-100 (bearish) ile +100 (bullish) arası; 8 bileşenin ağırlıklı toplamı. |skor| &lt; 15 ise nötr.</dd>
-    <dt>BOS</dt><dd>Break of Structure: fiyatın trend yönünde son swing'in ötesinde kapanması.</dd>
-    <dt>CHoCH</dt><dd>Change of Character: trendin tersine ilk yapı kırılımı; olası dönüş işareti.</dd>
-    <dt>HH / HL / LH / LL</dt><dd>Higher High, Higher Low, Lower High, Lower Low: tepe ve diplerin bir öncekine göre konumu.</dd>
-    <dt>BSL / SSL</dt><dd>Buy-side / sell-side liquidity: aşılmamış tepelerin üstü / diplerin altı; stop emirlerinin biriktiği yerler.</dd>
-    <dt>Sweep</dt><dd>İğnenin bir likidite seviyesini geçip mumun tekrar içeride kapanması.</dd>
-    <dt>FVG</dt><dd>Fair Value Gap: 3 mumlu yapıda 1. ve 3. mumun iğnelerinin örtüşmediği boşluk.</dd>
-    <dt>Premium / discount</dt><dd>Fiyatın son 5 günlük (30 adet 4H mum) aralığın üst / alt yarısında olması.</dd>
-    <dt>VWAP</dt><dd>Seans boyunca hacim ağırlıklı ortalama fiyat; her gün NY 18:00'de sıfırlanır.</dd>
-    <dt>PDH / PDL, PWH / PWL</dt><dd>Önceki günün / haftanın high ve low seviyeleri.</dd>
-    <dt>Tetik / invalidation</dt><dd>Senaryonun başlaması için gereken kapanış seviyesi / senaryoyu geçersiz kılan seviye.</dd>
+    <dt>10:00 açılışı</dt><dd>New York saatiyle 10:00'daki 5 dakikalık mumun açılış fiyatı. Modelin merkez seviyesi.</dd>
+    <dt>Manipülasyon</dt><dd>Fiyatın açılıştan belirli bir mesafe (NQ 15, ES 4, GC 3 puan) uzaklaşması. Yukarı manipülasyon short, aşağı manipülasyon long setup'ı hazırlar.</dd>
+    <dt>Geri kırılım</dt><dd>Manipülasyondan sonra bir 5 dakikalık mumun açılışın öbür tarafında kapanması.</dd>
+    <dt>Retest</dt><dd>Fiyatın açılış seviyesine geri dokunup yine kırılım tarafında kapanması. Giriş seviyesi açılış fiyatıdır.</dd>
+    <dt>Stop</dt><dd>Manipülasyonun en uç noktasının bir tick ötesi.</dd>
+    <dt>Hedef</dt><dd>Girişten en az stop mesafesi kadar uzaktaki ilk alınmamış likidite: önceki gün, Asya, Londra veya 08:00-10:00 yükseği/düşüğü ya da 5 dakikalık swing.</dd>
+    <dt>R</dt><dd>Risk birimi: stop mesafesi. +2R, stop mesafesinin iki katı kazanç; -1R, stop demek.</dd>
+    <dt>Setup yok</dt><dd>12:00'ye kadar manipülasyon, geri kırılım ve retest sırası tamamlanmadıysa o gün işlem aranmaz.</dd>
   </dl>
 </details>
 
-<div id="empty-state" class="card empty" hidden style="margin:16px"></div>
+<div id="empty-state" class="card empty" hidden></div>
 
 <main id="main">
-  <section>
-    <div class="card">
-      <div id="chart"></div>
-      <div class="legend">
-        <span style="--c: var(--ema20)">EMA 20</span><span style="--c: var(--ema50)">EMA 50</span>
-        <span style="--c: var(--ema200)">EMA 200</span><span style="--c: var(--vwap)">VWAP (gün içi)</span>
-        <span style="--c: var(--up)">Bullish tetik / hedef</span><span style="--c: var(--down)">Bearish tetik / hedef</span>
-      </div>
+  <section class="area-setup card" aria-labelledby="setup-title">
+    <div class="setup-head">
+      <h2 id="setup-title" style="margin:0">Bugünkü setup <small id="setup-date"></small></h2>
+      <span class="price num" id="price">-</span>
     </div>
-    <div class="card">
-      <h2>Claude raporu (claude.ai ile, ücretsiz)</h2>
-      <div class="steps">
-        <div class="step"><span class="step-no">1</span>
+    <div style="margin-top:12px"><span id="status" class="pill tone-neutral">-</span></div>
+    <div class="now" id="next"></div>
+    <ol class="steps" id="steps"></ol>
+    <div class="figures" id="figures"></div>
+    <div class="fresh" id="freshness"></div>
+  </section>
+
+  <section class="area-chart card">
+    <div class="chart-bar">
+      <h2>Grafik <small>New York saati</small></h2>
+      <select id="tf" aria-label="Zaman dilimi">
+        <option value="5m" selected>5 dakika</option><option value="15m">15 dakika</option><option value="1h">1 saat</option>
+      </select>
+      <label class="toggle"><input type="checkbox" id="show-indicators"> EMA / VWAP</label>
+    </div>
+    <div id="chart"></div>
+    <div class="legend" id="legend">
+      <span style="--c: var(--accent)">10:00 açılışı</span><span style="--c: var(--warn)">Manipülasyon ucu</span>
+      <span style="--c: var(--down)">Stop</span><span style="--c: var(--up)">Hedef</span>
+    </div>
+  </section>
+
+  <section class="area-history card">
+    <h2>Geçmiş performans <small id="history-range"></small></h2>
+    <div class="stats" id="stats"></div>
+    <div class="note" id="stats-note"></div>
+    <div class="table-wrap"><table id="history"></table></div>
+  </section>
+
+  <aside class="area-side">
+    <section class="card"><h2>Bugünün seviyeleri</h2><ul class="levels" id="levels"></ul></section>
+    <section class="card"><h2>Ekonomik takvim</h2><div id="events"></div></section>
+  </aside>
+
+  <section class="area-report card">
+    <details id="report-box">
+      <summary>Claude raporu (claude.ai ile, ücretsiz)</summary>
+      <div class="report-steps">
+        <div class="report-step"><span class="step-no">1</span>
           <button id="copy-prompt" class="primary">Prompt'u kopyala</button>
           <a href="https://claude.ai/new" target="_blank" rel="noopener">claude.ai'yi aç</a>
           <span class="note" id="prompt-status">Kopyalanan metni claude.ai'de yeni bir sohbete yapıştırın.</span>
         </div>
-        <div class="step"><span class="step-no">2</span><span>Claude'un cevabını kopyalayıp buraya yapıştırın:</span></div>
+        <div class="report-step"><span class="step-no">2</span><span>Claude'un cevabını kopyalayıp buraya yapıştırın:</span></div>
         <textarea id="report-input" placeholder="Claude'un raporu..."></textarea>
-        <div class="step"><span class="step-no">3</span>
+        <div class="report-step"><span class="step-no">3</span>
           <button id="check-report">Kontrol et ve kaydet</button>
           <span id="check-status" class="note"></span>
         </div>
         <div id="correction" hidden>
-          <div class="note">Aynı claude.ai sohbetine şu mesajı gönderin, gelen yeni raporu yukarıya yapıştırıp tekrar kontrol edin:</div>
+          <p class="note">Aynı claude.ai sohbetine şu mesajı gönderin, gelen yeni raporu yukarıya yapıştırıp tekrar kontrol edin:</p>
           <pre id="correction-text"></pre>
           <button id="copy-correction">Düzeltme mesajını kopyala</button>
         </div>
+        <details><summary class="note">API anahtarınız varsa: otomatik rapor</summary>
+          <p class="note">.env dosyasında ANTHROPIC_API_KEY tanımlıysa rapor tek tıkla üretilir (ücretli).</p>
+          <button id="report">API ile rapor üret</button>
+        </details>
       </div>
-      <details><summary>API anahtarınız varsa: otomatik rapor</summary>
-        <p class="note">`.env` dosyasında ANTHROPIC_API_KEY tanımlıysa rapor tek tıkla üretilir (ücretli).</p>
-        <button id="report">API ile rapor üret</button>
-      </details>
-    </div>
-    <div class="card">
-      <h2>Son kaydedilen rapor</h2>
-      <div id="report-meta" class="note"></div>
+      <h2 style="margin-top:24px">Son rapor <small id="report-meta"></small></h2>
       <pre id="report-text">Henüz rapor yok.</pre>
-    </div>
-    <div class="card">
-      <h2>Analiz geçmişi ve sonuçları</h2>
-      <div class="row-buttons">
-        <button id="record-all" title="Üç kontratın şu anki analizini kaydeder">Analizleri kaydet</button>
-        <button id="evaluate">Sonuçları ölç</button>
-        <span class="note" id="journal-status"></span>
-      </div>
-      <div id="summary" class="note"></div>
-      <div class="table-wrap"><table id="history"></table></div>
-    </div>
+    </details>
   </section>
-
-  <aside>
-    <div class="card">
-      <h2>Durum</h2>
-      <div class="price" id="price">-</div>
-      <div class="note" id="freshness"></div>
-      <div style="margin:6px 0 10px"><span id="bias" class="bias neutral">-</span> <span id="score" class="note"></span></div>
-      <div id="components"></div>
-      <p class="note" id="score-note"></p>
-    </div>
-    <div class="card"><h2>Olay riski</h2><div id="event"></div></div>
-    <div class="card"><h2>Senaryolar</h2><div id="scenarios"></div></div>
-    <div class="card"><h2>Seanslar</h2><dl class="kv" id="sessions"></dl></div>
-    <div class="card"><h2>Destek / direnç</h2><div id="levels"></div></div>
-  </aside>
 </main>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-const fmt = (v) => (v === null || v === undefined) ? "-" : String(v);
+const TICK_DECIMALS = { NQ: 2, ES: 2, GC: 1 };
+let symbol = "NQ";
+const price = (v) => (v === null || v === undefined) ? "—" : Number(v).toFixed(TICK_DECIMALS[symbol] ?? 2);
 const nyTime = (seconds, withDate = true) => new Date(seconds * 1000).toLocaleString("tr-TR", {
   timeZone: "America/New_York", hour: "2-digit", minute: "2-digit",
   ...(withDate ? { day: "2-digit", month: "2-digit" } : {}),
 });
+const isoTime = (iso) => iso ? nyTime(Date.parse(iso) / 1000, false) : "—";
+const dayLabel = (date) => new Date(`${date}T12:00:00Z`).toLocaleDateString("tr-TR", { weekday: "short", day: "2-digit", month: "2-digit" });
 
-// Küçük yardımcı: metin içeriğiyle eleman oluşturur (HTML olarak yorumlanmaz)
+// Metin içeriğiyle eleman oluşturur (HTML olarak yorumlanmaz)
 function el(tag, text, className) {
   const node = document.createElement(tag);
   if (text !== undefined) node.textContent = text;
@@ -217,11 +271,27 @@ async function getJSON(url, options) {
   return body;
 }
 
+// Durum -> renk tonu ve kısa etiket
+const STATUS = {
+  before_open: ["neutral", "10:00 bekleniyor"],
+  waiting_manipulation: ["neutral", "Manipülasyon bekleniyor"],
+  manipulation: ["warn", "Geri kırılım bekleniyor"],
+  waiting_retest: ["warn", "Retest bekleniyor"],
+  in_trade: ["accent", "Setup aktif"],
+  target: ["up", "Hedef ✓"],
+  stop: ["down", "Stop ✗"],
+  ambiguous: ["neutral", "Belirsiz"],
+  time_exit: ["neutral", "16:00 kapanış"],
+  no_setup: ["neutral", "Setup yok"],
+  no_data: ["neutral", "Veri yok"],
+};
+const DIRECTION = { long: "Long (yukarı)", short: "Short (aşağı)" };
+
 // --- Grafik ---
 const chart = LightweightCharts.createChart($("chart"), {
   autoSize: true,
-  layout: { background: { color: "transparent" }, textColor: css("--muted") },
-  grid: { vertLines: { color: css("--border") }, horzLines: { color: css("--border") } },
+  layout: { background: { color: "transparent" }, textColor: css("--muted"), fontSize: 13 },
+  grid: { vertLines: { visible: false }, horzLines: { color: css("--border") } },
   timeScale: { timeVisible: true, tickMarkFormatter: (t) => nyTime(t, false) },
   localization: { timeFormatter: (t) => nyTime(t) + " NY" },
   rightPriceScale: { borderColor: css("--border") },
@@ -229,197 +299,239 @@ const chart = LightweightCharts.createChart($("chart"), {
 const candles = chart.addCandlestickSeries({
   upColor: css("--up"), downColor: css("--down"), wickUpColor: css("--up"), wickDownColor: css("--down"), borderVisible: false,
 });
-const volume = chart.addHistogramSeries({ priceScaleId: "", priceFormat: { type: "volume" }, color: css("--border") });
-volume.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-// Gösterge çizgileri dikey ölçeği etkilemez (örn. uzaktaki EMA 200 mumları ezmesin)
 const lineOptions = { priceLineVisible: false, lastValueVisible: false, autoscaleInfoProvider: () => null };
-const lines = {
+const indicatorLines = {
   ema_20: chart.addLineSeries({ ...lineOptions, color: css("--ema20"), lineWidth: 1 }),
   ema_50: chart.addLineSeries({ ...lineOptions, color: css("--ema50"), lineWidth: 1 }),
-  ema_200: chart.addLineSeries({ ...lineOptions, color: css("--ema200"), lineWidth: 2 }),
+  ema_200: chart.addLineSeries({ ...lineOptions, color: css("--ema200"), lineWidth: 1 }),
   vwap: chart.addLineSeries({ ...lineOptions, color: css("--vwap"), lineWidth: 1, lineStyle: 2 }),
 };
 let priceLines = [];
+let chartData = null;
 
-function drawChart(data) {
+function drawChart(data, setup) {
+  chartData = data;
   candles.setData(data.bars);
-  volume.setData(data.bars.map((b) => ({ time: b.time, value: b.volume })));
-  for (const [name, series] of Object.entries(lines)) series.setData(data.lines[name] || []);
+  const show = $("show-indicators").checked;
+  for (const [name, series] of Object.entries(indicatorLines)) series.setData(show ? (data.lines[name] || []) : []);
+  drawSetupOnChart(setup);
 }
 
-function drawScenarioLines(scenarios) {
+// Olayın zamanını grafikteki mumun başlangıcına indirir (15m / 1h grafikte de işaret doğru mumda dursun)
+function barTime(iso) {
+  if (!iso || !chartData || !chartData.bars.length) return null;
+  const t = Date.parse(iso) / 1000;
+  let found = null;
+  for (const bar of chartData.bars) { if (bar.time <= t) found = bar.time; else break; }
+  return found;
+}
+
+function drawSetupOnChart(setup) {
   priceLines.forEach((line) => candles.removePriceLine(line));
   priceLines = [];
-  if (!scenarios) return;
-  const add = (price, color, title, style) => priceLines.push(candles.createPriceLine({
-    price, color, title, lineWidth: 1, lineStyle: style, axisLabelVisible: true,
-  }));
-  const bull = scenarios.bullish, bear = scenarios.bearish;
-  add(bull.trigger_level, css("--up"), "bull tetik", 2);
-  bull.targets.forEach((t, i) => add(t.level, css("--up"), `bull hedef ${i + 1}`, 1));
-  add(bear.trigger_level, css("--down"), "bear tetik", 2);
-  bear.targets.forEach((t, i) => add(t.level, css("--down"), `bear hedef ${i + 1}`, 1));
-}
-
-// --- Yan panel ---
-function drawScore(snapshot) {
-  const score = snapshot.score;
-  $("price").textContent = `${snapshot.instrument} ${fmt(snapshot.price)}`;
-  $("bias").textContent = score.bias;
-  $("bias").className = `bias ${score.bias}`;
-  $("score").textContent = `skor ${score.total} · kapsam ${score.coverage}/100`;
-  $("score-note").textContent = score.note;
-
-  const box = $("components");
-  box.replaceChildren();
-  for (const [name, c] of Object.entries(score.components)) {
-    const row = el("div", undefined, "comp");
-    row.title = c.reason;
-    row.append(el("span", name));
-    const bar = el("div", undefined, "bar");
-    const fill = el("i");
-    const width = Math.abs(c.value) * 50;
-    fill.style.left = c.value >= 0 ? "50%" : `${50 - width}%`;
-    fill.style.width = `${width}%`;
-    fill.style.background = c.value >= 0 ? css("--up") : css("--down");
-    if (!c.available) bar.style.opacity = "0.35";
-    bar.append(fill);
-    row.append(bar, el("span", `${c.points > 0 ? "+" : ""}${c.points}`, "num"));
-    box.append(row);
+  const add = (value, color, title, style = 0, width = 2) => {
+    if (value === null || value === undefined) return;
+    priceLines.push(candles.createPriceLine({ price: value, color, title, lineWidth: width, lineStyle: style, axisLabelVisible: true }));
+  };
+  const markers = [];
+  const mark = (iso, position, color, shape, text) => {
+    const time = barTime(iso);
+    if (time !== null) markers.push({ time, position, color, shape, text });
+  };
+  if (setup && setup.open_level !== null) {
+    add(setup.open_level, css("--accent"), "10:00 açılış");
+    if (setup.status === "waiting_manipulation") {
+      add(setup.open_level + setup.trap_points, css("--faint"), "short eşiği", 2, 1);
+      add(setup.open_level - setup.trap_points, css("--faint"), "long eşiği", 2, 1);
+    }
+    const short = setup.direction === "short";
+    if (setup.manipulation) {
+      if (!setup.entry) add(setup.manipulation.extreme, css("--warn"), "manipülasyon ucu", 2);
+      mark(setup.manipulation.ts, short ? "aboveBar" : "belowBar", css("--warn"), short ? "arrowDown" : "arrowUp", "Manipülasyon");
+    }
+    if (setup.break) mark(setup.break.ts, short ? "belowBar" : "aboveBar", css("--muted"), "circle", "Kırılım");
+    if (setup.entry) {
+      add(setup.stop, css("--down"), "stop");
+      add(setup.target.price, css("--up"), "hedef");
+      mark(setup.entry.ts, short ? "aboveBar" : "belowBar", css("--accent"), short ? "arrowDown" : "arrowUp", "Giriş");
+    }
+    if (setup.exit) {
+      const good = setup.status === "target";
+      mark(setup.exit.ts, "aboveBar", good ? css("--up") : css("--down"), "circle", STATUS[setup.status][1]);
+    }
   }
+  markers.sort((a, b) => a.time - b.time);
+  candles.setMarkers(markers);
 }
 
-function drawScenarios(scenarios) {
-  const box = $("scenarios");
-  box.replaceChildren();
-  if (!scenarios) { box.append(el("div", "Senaryo üretilemedi (seviye verisi yok).", "note")); return; }
-  for (const side of ["bullish", "bearish"]) {
-    const s = scenarios[side];
-    const block = el("div", undefined, `scenario ${side}`);
-    block.append(el("b", `${side.toUpperCase()}${scenarios.primary === side ? " (birincil)" : ""}`));
-    block.append(el("div", `Tetik: ${s.trigger}`));
-    block.append(el("div", `Onay: ${s.confirmation}`));
-    block.append(el("div", `Hedefler: ${s.targets.map((t) => t.level).join(", ") || "yok"}`));
-    block.append(el("div", `Invalidation: ${s.invalidation}`));
-    box.append(block);
-  }
-  const neutral = el("div", undefined, "scenario");
-  neutral.append(el("b", `NEUTRAL${scenarios.primary === "neutral" ? " (birincil)" : ""}`), el("div", scenarios.neutral.description));
-  box.append(neutral);
-}
+// --- Bugünkü setup ---
+function drawSetup(snapshot) {
+  const s = snapshot.setup;
+  const [tone, label] = STATUS[s.status] || ["neutral", s.status];
+  $("setup-date").textContent = `· ${symbol} · ${dayLabel(s.date)}`;
+  $("price").textContent = price(snapshot.price);
+  $("status").textContent = s.direction && s.status !== "no_setup" ? `${label} · ${DIRECTION[s.direction]}` : label;
+  $("status").className = `pill tone-${tone}`;
+  $("next").textContent = s.next;
 
-function drawEvent(snapshot) {
-  const box = $("event");
-  box.replaceChildren();
-  const calendar = snapshot.news && snapshot.news.calendar;
-  const risk = calendar && calendar.event_risk;
-  if (!risk) { box.append(el("div", "Takvimde yaklaşan yüksek/orta etkili ABD verisi yok (veya takvim alınamadı).", "note")); return; }
-  box.append(el("div", `${risk.title} · ${risk.time_ny} NY · ${risk.minutes_until} dk sonra`, risk.imminent ? "warn" : ""));
-  box.append(el("div", risk.why_it_matters, "note"));
-}
-
-function drawSessions(sessions) {
-  const box = $("sessions");
-  box.replaceChildren();
-  if (!sessions) return;
-  const add = (key, value) => box.append(el("dt", key), el("dd", value));
-  add("Şu an", sessions.current_session);
-  for (const name of ["asia", "london", "new_york"]) {
-    const s = sessions[name];
-    add(name, s ? `${s.high} / ${s.low}` : "başlamadı");
-  }
-  add("NY açılış", `${fmt(sessions.ny_open.price)} (${sessions.ny_open.time_ny})`);
-  if (sessions.previous_new_york) add("Önceki NY", `${sessions.previous_new_york.high} / ${sessions.previous_new_york.low}`);
-}
-
-function drawLevels(levels) {
-  const box = $("levels");
-  box.replaceChildren();
-  if (!levels) return;
-  const table = el("table");
-  const head = el("tr");
-  head.append(el("th", "Zone"), el("th", "Mesafe", "num"), el("th", "Kaynaklar"));
-  table.append(head);
-  const rows = [
-    ...levels.resistance.slice(0, 4).reverse().map((z) => [z, "bearish"]),
-    ...levels.at_price.map((z) => [z, "neutral"]),
-    ...levels.support.slice(0, 4).map((z) => [z, "bullish"]),
+  const steps = [
+    ["10:00 açılışı", s.open_level !== null, s.open_level !== null ? price(s.open_level) : "10:00'da"],
+    [`Manipülasyon (en az ${s.trap_points} puan)`, Boolean(s.manipulation),
+      s.manipulation ? `${s.manipulation.side === "up" ? "Yukarı" : "Aşağı"} · uç ${price(s.manipulation.extreme)}` : ""],
+    ["Açılışın geri kırılması", Boolean(s.break || s.entry), s.break ? isoTime(s.break.ts) : ""],
+    ["Retest ve giriş", Boolean(s.entry), s.entry ? `${price(s.entry.price)} · ${isoTime(s.entry.ts)}` : "12:00'ye kadar"],
   ];
-  for (const [zone, cls] of rows) {
-    const tr = el("tr");
-    tr.append(
-      el("td", zone.low === zone.high ? `${zone.low}` : `${zone.low} - ${zone.high}`, cls),
-      el("td", `${zone.distance}`, "num"),
-      el("td", zone.sources.join(", "), "note"),
-    );
-    table.append(tr);
-  }
-  box.append(table);
+  const list = $("steps");
+  list.replaceChildren();
+  let currentFound = s.finished;
+  steps.forEach(([name, done, detail], i) => {
+    const current = !done && !currentFound;
+    if (current) currentFound = true;
+    const li = el("li", undefined, done ? "done" : current ? "current" : "todo");
+    li.append(el("span", done ? "✓" : String(i + 1), "dot"), el("span", name, "step-name"), el("span", detail, "step-detail num"));
+    list.append(li);
+  });
+
+  const figures = $("figures");
+  figures.replaceChildren();
+  const figure = (name, value, sub) => {
+    const box = el("div", undefined, "figure");
+    box.append(el("span", name), el("b", value));
+    if (sub) box.append(el("small", sub));
+    figures.append(box);
+  };
+  figure("Giriş", price(s.entry && s.entry.price));
+  figure("Stop", price(s.stop), s.risk_points !== null ? `${s.risk_points} puan risk` : "");
+  figure("Hedef", price(s.target && s.target.price), s.target ? s.target.source : "");
+  figure("R:R", s.rr !== null ? `1 : ${s.rr}` : "—", s.r_multiple !== null ? `sonuç ${s.r_multiple > 0 ? "+" : ""}${s.r_multiple}R` : "");
+
+  const box = $("freshness");
+  if (!snapshot.last_bar_ts) { box.textContent = ""; return; }
+  const minutes = Math.round((Date.now() - Date.parse(snapshot.last_bar_ts)) / 60000);
+  const stale = snapshot.market_open && minutes > 45;
+  box.textContent = `Son mum ${nyTime(Date.parse(snapshot.last_bar_ts) / 1000)} NY (${minutes} dk önce)`
+    + (snapshot.market_open ? "" : " · piyasa kapalı")
+    + (stale ? " · veri eski, \"Verileri güncelle\"ye basın" : "");
+  box.className = stale ? "fresh warn" : "fresh";
 }
 
-// --- Rapor ve geçmiş ---
-function drawHistory(rows) {
+// --- Geçmiş performans ---
+function drawHistory(history) {
+  const st = history.stats;
+  const days = history.days;
+  $("history-range").textContent = days.length ? `· son ${st.days} işlem günü (${dayLabel(days[days.length - 1].date)} - ${dayLabel(days[0].date)})` : "";
+  const stats = $("stats");
+  stats.replaceChildren();
+  const tile = (name, value, cls = "") => {
+    const box = el("div", undefined, "stat");
+    box.append(el("span", name), el("b", value, cls));
+    stats.append(box);
+  };
+  const pct = (v) => v === null ? "—" : `%${v}`;
+  tile("Setup oluşan gün", `${st.setups} / ${st.days}`);
+  tile("Hedef / stop", `${st.wins} / ${st.losses}`);
+  tile("Kazanma oranı", pct(st.win_rate));
+  tile("Ortalama R", st.avg_r === null ? "—" : `${st.avg_r > 0 ? "+" : ""}${st.avg_r}`, st.avg_r > 0 ? "up" : st.avg_r < 0 ? "down" : "");
+  tile("Toplam R", st.total_r === null ? "—" : `${st.total_r > 0 ? "+" : ""}${st.total_r}`, st.total_r > 0 ? "up" : st.total_r < 0 ? "down" : "");
+  $("stats-note").textContent = `Long: ${st.long.setups} setup, kazanma ${pct(st.long.win_rate)} · Short: ${st.short.setups} setup, kazanma ${pct(st.short.win_rate)}. `
+    + `${st.time_exits} işlem 16:00'da hedef/stop olmadan kapandı, ${st.ambiguous} işlemde sıra belirsiz. Örneklem küçük; kesin sonuç değildir.`;
+
   const table = $("history");
   table.replaceChildren();
   const head = el("tr");
-  ["Zaman (NY)", "Fiyat", "Bias", "Skor", "4s %", "1g %", "Yön doğru?", "Senaryo", "Rapor"].forEach((h, i) =>
-    head.append(el("th", h, i > 0 && i < 7 && i !== 2 ? "num" : "")));
-  table.append(head);
-  for (const row of rows) {
-    const ev = row.evaluation || {};
-    const ret = ev.returns || {};
+  [["Gün"], ["Yön"], ["Açılış", "num"], ["Giriş", "num"], ["Stop", "num"], ["Hedef", "num"], ["Sonuç"], ["R", "num"]]
+    .forEach(([h, cls]) => head.append(el("th", h, cls)));
+  const thead = el("thead");
+  thead.append(head);
+  table.append(thead);
+  const body = el("tbody");
+  for (const d of days) {
+    const [tone, label] = STATUS[d.status] || ["neutral", d.status];
     const tr = el("tr");
+    const result = el("td");
+    result.append(el("span", label, `result tone-${tone}`));
     tr.append(
-      el("td", nyTime(Date.parse(row.as_of) / 1000)),
-      el("td", fmt(row.price), "num"),
-      el("td", row.bias, row.bias),
-      el("td", fmt(row.score_total), "num"),
-      el("td", fmt(ret["4h"]), "num"),
-      el("td", fmt(ret["1d"]), "num"),
-      el("td", ev.direction_correct === undefined || ev.direction_correct === null ? "-" : (ev.direction_correct ? "evet" : "hayır"), "num"),
-      el("td", ev.scenario ? ev.scenario.result : "bekliyor"),
-      el("td", row.report_text ? (row.report_validated ? "var" : "var (doğrulanmadı)") : "-"),
+      el("td", dayLabel(d.date)),
+      el("td", d.entry !== null ? DIRECTION[d.direction] : "—"),
+      el("td", price(d.open_level), "num"),
+      el("td", d.entry !== null ? `${price(d.entry)} · ${isoTime(d.entry_ts)}` : "—", "num"),
+      el("td", price(d.stop), "num"),
+      el("td", price(d.target), "num"),
+      result,
+      el("td", d.r_multiple === null ? "—" : `${d.r_multiple > 0 ? "+" : ""}${d.r_multiple}`, `num ${d.r_multiple > 0 ? "up" : d.r_multiple < 0 ? "down" : ""}`),
     );
-    table.append(tr);
+    if (d.target_source) tr.title = `Hedef: ${d.target_source}`;
+    body.append(tr);
   }
-  if (!rows.length) {
+  if (!days.length) {
+    const td = el("td", "Henüz geçmiş gün yok.", "note");
+    td.colSpan = 8;
     const tr = el("tr");
-    const td = el("td", "Kayıt yok. \"Analizleri kaydet\" veya \"Prompt'u kopyala\" ile analiz kaydedin.", "note");
-    td.colSpan = 9;
     tr.append(td);
-    table.append(tr);
+    body.append(tr);
   }
-
-  const latest = rows.find((r) => r.report_text);
-  $("report-text").textContent = latest ? latest.report_text : "Henüz rapor yok.";
-  $("report-meta").textContent = latest
-    ? `${nyTime(Date.parse(latest.as_of) / 1000)} NY · ${latest.report_model}${latest.report_validated ? "" : " · UYARI: veride olmayan sayılar içeriyor"}`
-    : "";
+  table.append(body);
 }
 
-// --- Uyarı şeridi, veri tazeliği, sekme başlığı ---
-function drawBanner(snapshot) {
-  const calendar = snapshot.news && snapshot.news.calendar;
+// --- Seviyeler ve takvim ---
+function drawLevels(snapshot) {
+  const list = $("levels");
+  list.replaceChildren();
+  const rows = snapshot.levels.map((l) => ({ ...l }));
+  if (snapshot.price !== null) rows.push({ name: "Güncel fiyat", price: snapshot.price, isPrice: true });
+  rows.sort((a, b) => b.price - a.price);
+  for (const level of rows) {
+    const li = el("li", undefined, level.isPrice ? "price-row" : level.name === "10:00 açılışı" ? "open-level" : "");
+    const right = el("span", price(level.price), "num");
+    if (!level.isPrice && snapshot.price !== null) {
+      const d = level.price - snapshot.price;
+      right.append(el("span", `${d > 0 ? "+" : ""}${d.toFixed(TICK_DECIMALS[symbol] ?? 2)}`, "dist"));
+    }
+    li.append(el("span", level.name), right);
+    list.append(li);
+  }
+  if (!rows.length) list.append(el("li", "Seviye hesaplanamadı (veri yok).", "note"));
+}
+
+function drawEvents(events) {
+  const box = $("events");
+  box.replaceChildren();
+  if (!events) { box.append(el("div", "Takvim alınamadı.", "note")); return; }
+  const today = events.today || [];
+  box.append(el("div", today.length ? "Bugün" : "Bugün önemli ABD verisi yok.", "note"));
+  for (const e of today) {
+    const item = el("div", undefined, `event${e.near_open ? " near" : ""}`);
+    item.append(el("div", `${e.time_ny} NY · ${e.title}${e.released ? " (açıklandı)" : ""}`));
+    if (e.near_open) item.append(el("div", "10:00'a yakın: manipülasyon hareketini doğrudan etkileyebilir.", "bad"));
+    item.append(el("div", e.why_it_matters, "why"));
+    box.append(item);
+  }
+  const risk = events.event_risk;
+  if (risk && !today.some((e) => e.title === risk.title)) {
+    box.append(el("div", "Sıradaki önemli veri", "note"));
+    const item = el("div", undefined, "event");
+    item.append(el("div", `${risk.time_ny} NY · ${risk.title}`), el("div", risk.why_it_matters, "why"));
+    box.append(item);
+  }
+}
+
+function drawBanner(events) {
   const banner = $("event-banner");
-  const risk = calendar && calendar.event_risk;
-  const released = calendar ? calendar.just_released : [];
+  const risk = events && events.event_risk;
+  const released = events ? events.just_released : [];
   let text = "";
-  if (risk && risk.imminent) text = `⚠ ${risk.minutes_until} dakika sonra: ${risk.title} (${risk.time_ny} NY). Açıklama anında sert hareket olabilir.`;
+  if (risk && risk.imminent) text = `⚠ ${risk.minutes_until} dakika sonra: ${risk.title} (${risk.time_ny.slice(11)} NY). Açıklama anında sert hareket olabilir.`;
   else if (released && released.length) text = `⚠ Yeni açıklandı: ${released.map((e) => e.title).join(", ")}. Oynaklık sürebilir.`;
   banner.textContent = text;
   banner.hidden = !text;
 }
 
-function drawFreshness(snapshot) {
-  const five = snapshot.timeframes["5m"] || snapshot.timeframes["15m"];
-  const box = $("freshness");
-  if (!five) { box.textContent = ""; return; }
-  const lastBar = Date.parse(five.technical.ts);
-  const minutes = Math.round((Date.now() - lastBar) / 60000);
-  const open = snapshot.sessions && snapshot.sessions.current_session !== "closed";
-  box.textContent = `Son mum: ${nyTime(lastBar / 1000)} NY (${minutes} dk önce)` + (open ? "" : " · piyasa kapalı");
-  box.className = open && minutes > 45 ? "fresh-warn" : "note";
-  if (open && minutes > 45) box.textContent += " · veri eski, güncellemeyi bekleyin veya \"Verileri güncelle\"";
+function drawReport(rows) {
+  const latest = rows[0];
+  $("report-text").textContent = latest ? latest.report_text : "Henüz rapor yok.";
+  $("report-meta").textContent = latest
+    ? `· ${nyTime(Date.parse(latest.as_of) / 1000)} NY · ${latest.report_model}${latest.report_validated ? "" : " · UYARI: veride olmayan sayılar içeriyor"}`
+    : "";
 }
 
 function showEmpty(message) {
@@ -430,80 +542,72 @@ function showEmpty(message) {
 
 // Seçimleri hatırla (tarayıcıda saklanır; saklanamazsa varsayılanlar kullanılır)
 function remember() {
-  try { localStorage.setItem("fa-choice", JSON.stringify({ symbol: $("symbol").value, tf: $("tf").value })); } catch {}
+  try { localStorage.setItem("fa-10am", JSON.stringify({ symbol, tf: $("tf").value, indicators: $("show-indicators").checked })); } catch {}
 }
 try {
-  const saved = JSON.parse(localStorage.getItem("fa-choice") || "{}");
-  if (saved.symbol) $("symbol").value = saved.symbol;
+  const saved = JSON.parse(localStorage.getItem("fa-10am") || "{}");
+  if (saved.symbol) symbol = saved.symbol;
   if (saved.tf) $("tf").value = saved.tf;
-  if (!localStorage.getItem("fa-help-seen")) { $("help").open = true; localStorage.setItem("fa-help-seen", "1"); }
+  $("show-indicators").checked = Boolean(saved.indicators);
+  if (!localStorage.getItem("fa-10am-help-seen")) { $("help").open = true; localStorage.setItem("fa-10am-help-seen", "1"); }
 } catch {}
 
+function markSymbol() {
+  for (const button of $("symbols").querySelectorAll("button")) button.setAttribute("aria-pressed", String(button.dataset.symbol === symbol));
+}
+
 // --- Yükleme ---
+let lastSetup = null;
 async function load() {
-  const symbol = $("symbol").value, tf = $("tf").value;
   remember();
-  $("status").textContent = "yükleniyor...";
+  markSymbol();
   try {
-    const [snapshot, chartData, history] = await Promise.all([
+    const [snapshot, data, reports] = await Promise.all([
       getJSON(`/snapshot?symbol=${symbol}`),
-      getJSON(`/chart?symbol=${symbol}&tf=${tf}&limit=300`),
-      getJSON(`/analyses?symbol=${symbol}&limit=15`),
+      getJSON(`/chart?symbol=${symbol}&tf=${$("tf").value}&limit=300`),
+      getJSON(`/reports?symbol=${symbol}&limit=1`),
     ]);
     showEmpty("");
-    document.title = `${symbol} ${snapshot.price} · ${snapshot.score.bias} · Futures Analyzer`;
-    drawBanner(snapshot);
-    drawFreshness(snapshot);
-    drawChart(chartData);
-    drawScenarioLines(snapshot.scenarios);
-    drawScore(snapshot);
-    drawEvent(snapshot);
-    drawScenarios(snapshot.scenarios);
-    drawSessions(snapshot.sessions);
-    drawLevels(snapshot.levels);
-    drawHistory(history);
-    $("status").textContent = `ekran yenilendi ${new Date().toLocaleTimeString("tr-TR")}`;
+    lastSetup = snapshot.setup;
+    document.title = `${symbol} ${price(snapshot.price)} · ${(STATUS[snapshot.setup.status] || [, ""])[1]} · 10am Model`;
+    drawBanner(snapshot.events);
+    drawSetup(snapshot);
+    drawChart(data, snapshot.setup);
+    drawHistory(snapshot.history);
+    drawLevels(snapshot);
+    drawEvents(snapshot.events);
+    drawReport(reports);
   } catch (error) {
-    if (error.message.startsWith("Henüz veri yok")) {
-      showEmpty(error.message);
-      $("status").textContent = "";
-    } else {
-      $("status").textContent = `hata: ${error.message}`;
-    }
+    if (error.message.startsWith("Henüz veri yok")) showEmpty(error.message);
+    else $("data-status").textContent = `hata: ${error.message}`;
   }
 }
 
-$("symbol").addEventListener("change", load);
-$("tf").addEventListener("change", load);
-$("report").addEventListener("click", async () => {
-  const button = $("report");
-  button.disabled = true;
-  $("status").textContent = "Claude raporu hazırlanıyor (1-2 dk sürebilir)...";
-  try {
-    await getJSON(`/report?symbol=${$("symbol").value}`, { method: "POST" });
-    await load();
-  } catch (error) {
-    $("status").textContent = `rapor üretilemedi: ${error.message}`;
-  } finally {
-    button.disabled = false;
-  }
+$("symbols").addEventListener("click", (event) => {
+  const button = event.target.closest("button[data-symbol]");
+  if (!button || button.dataset.symbol === symbol) return;
+  symbol = button.dataset.symbol;
+  $("check-status").textContent = "";
+  $("correction").hidden = true;
+  load();
 });
+$("tf").addEventListener("change", load);
+$("show-indicators").addEventListener("change", () => { if (chartData) drawChart(chartData, lastSetup); remember(); });
 
 // --- Veri güncelleme (arka planda) ---
 let wasRunning = false;
 async function pollDataStatus() {
   try {
     const s = await getJSON("/refresh/status");
-    const button = $("update-data");
-    button.disabled = s.running;
+    $("update-data").disabled = s.running;
     if (s.running) {
       const last = s.log.length ? s.log[s.log.length - 1] : "başlıyor";
-      $("data-status").textContent = `Veriler güncelleniyor... (${last})`;
+      $("data-status").textContent = `Güncelleniyor... (${last})`;
     } else if (s.last_finished) {
       const when = new Date(s.last_finished).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
       const auto = s.auto_refresh_minutes > 0 ? ` · ${s.auto_refresh_minutes} dk'da bir otomatik` : "";
       const errors = s.errors.length ? ` · ${s.errors.length} adımda hata` : "";
-      $("data-status").textContent = `Veriler güncellendi ${when}${auto}${errors}`;
+      $("data-status").textContent = `Veriler ${when}'de güncellendi${auto}${errors}`;
       $("data-status").title = s.errors.join("\n");
     }
     if (wasRunning && !s.running) load();  // güncelleme bitti: ekranı yenile
@@ -542,13 +646,12 @@ $("copy-prompt").addEventListener("click", async () => {
   button.disabled = true;
   $("prompt-status").textContent = "hazırlanıyor...";
   try {
-    const result = await getJSON(`/prompt?symbol=${$("symbol").value}`, { method: "POST" });
+    const result = await getJSON(`/prompt?symbol=${symbol}`, { method: "POST" });
     promptId = result.id;
     await copyText(result.text);
-    $("prompt-status").textContent = `Analiz #${result.id} (${$("symbol").value}) kopyalandı. claude.ai'de yeni sohbete yapıştırın.`;
+    $("prompt-status").textContent = `Kayıt #${result.id} (${symbol}) kopyalandı. claude.ai'de yeni sohbete yapıştırın.`;
     $("check-status").textContent = "";
     $("correction").hidden = true;
-    load();
   } catch (error) {
     $("prompt-status").textContent = `hata: ${error.message}`;
   } finally {
@@ -566,52 +669,37 @@ $("check-report").addEventListener("click", async () => {
       body: JSON.stringify({ id: promptId, text }),
     });
     if (result.validated) {
-      $("check-status").textContent = `Doğrulandı ve analiz #${promptId} kaydına eklendi.`;
+      $("check-status").textContent = `Doğrulandı ve #${promptId} kaydına eklendi.`;
       $("check-status").className = "ok";
       $("correction").hidden = true;
       $("report-input").value = "";
     } else {
       $("check-status").textContent = `Veride olmayan fiyatlar var: ${result.unknown_numbers.join(", ")} (doğrulanmadı olarak kaydedildi)`;
-      $("check-status").className = "warn";
+      $("check-status").className = "bad";
       $("correction-text").textContent = result.correction;
       $("correction").hidden = false;
     }
     load();
   } catch (error) {
     $("check-status").textContent = `hata: ${error.message}`;
-    $("check-status").className = "warn";
+    $("check-status").className = "bad";
   }
 });
 
 $("copy-correction").addEventListener("click", () => copyText($("correction-text").textContent));
 
-// --- Kayıt ve sonuç ölçümü ---
-$("record-all").addEventListener("click", async () => {
-  $("journal-status").textContent = "kaydediliyor...";
+$("report").addEventListener("click", async () => {
+  const button = $("report");
+  button.disabled = true;
+  $("check-status").textContent = "Claude raporu hazırlanıyor (1-2 dk sürebilir)...";
   try {
-    const saved = await getJSON("/record", { method: "POST" });
-    $("journal-status").textContent = saved.map((s) => `#${s.id} ${s.instrument} ${s.bias}`).join(" · ");
-    load();
+    await getJSON(`/report?symbol=${symbol}`, { method: "POST" });
+    $("check-status").textContent = "";
+    await load();
   } catch (error) {
-    $("journal-status").textContent = `hata: ${error.message}`;
-  }
-});
-
-$("evaluate").addEventListener("click", async () => {
-  $("journal-status").textContent = "ölçülüyor...";
-  try {
-    const result = await getJSON(`/evaluate?symbol=${$("symbol").value}`, { method: "POST" });
-    const s = result.summary;
-    const pct = (v) => v === null || v === undefined ? "-" : `%${v}`;
-    $("journal-status").textContent = `${result.updated} kayıt güncellendi`;
-    $("summary").textContent = s.evaluated
-      ? `${$("symbol").value}: ${s.evaluated} analiz ölçüldü · 4s yön isabeti: bullish ${pct(s.by_bias.bullish.hit_rate_4h)}, `
-        + `bearish ${pct(s.by_bias.bearish.hit_rate_4h)} (baseline ${pct(s.baseline.hit_rate_4h)}) · `
-        + `birincil senaryo hedefe ulaşma ${pct(s.scenarios.primary_target_rate)}`
-      : "Henüz 1 günü dolmuş analiz yok; kaydettiğiniz analizler ertesi gün ölçülebilir.";
-    load();
-  } catch (error) {
-    $("journal-status").textContent = `hata: ${error.message}`;
+    $("check-status").textContent = `rapor üretilemedi: ${error.message}`;
+  } finally {
+    button.disabled = false;
   }
 });
 

@@ -2,8 +2,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from futures_analyzer.api import app, db_engine
-from futures_analyzer.data.storage import save_candles
+from futures_analyzer.data.storage import save_candles, save_report
 from tests.conftest import make_hourly_candles
+from tests.test_ten_am import short_setup
 
 
 @pytest.fixture
@@ -29,13 +30,18 @@ def test_candles(client, engine):
 
 
 def test_snapshot(client, engine):
-    save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
+    save_candles(engine, "NQ", "5m", short_setup())
 
     body = client.get("/snapshot", params={"symbol": "nq"}).json()
 
     assert body["instrument"] == "NQ"
-    assert body["timeframes"]["1h"]["technical"]["ema_trend"] == "bullish"
-    assert "structure" in body["timeframes"]["1h"]
+    assert body["history"]["stats"]["days"] == 2      # geçmiş günler 5M veriden hesaplanır
+    assert body["history"]["days"][0]["date"] == "2026-09-16"
+    # NQ'nun eşiği 15 puan; test verisindeki 8 puanlık hareket manipülasyon sayılmaz
+    assert body["history"]["days"][0]["status"] == "no_setup"
+    assert body["history"]["days"][0]["open_level"] == 100.0
+    assert body["setup"]["next"]
+    assert body["events"] == {"event_risk": None, "just_released": [], "upcoming": [], "today": []}
 
 
 def test_unknown_symbol(client):
@@ -50,8 +56,9 @@ def test_dashboard_page(client):
     response = client.get("/")
 
     assert response.status_code == 200
-    assert "Futures Analyzer" in response.text
+    assert "10am Model" in response.text
     assert "lightweight-charts" in response.text
+    assert client.get("/icon.svg").headers["content-type"] == "image/svg+xml"
 
 
 def test_chart_has_python_computed_indicators(client, engine):
@@ -65,19 +72,17 @@ def test_chart_has_python_computed_indicators(client, engine):
     assert body["has_vwap"] is True
 
 
-def test_analyses_endpoint_hides_snapshot(client, engine):
-    from futures_analyzer.evaluation.journal import record_analysis
+def test_reports_endpoint_lists_only_reports_and_hides_snapshot(client, engine):
+    snapshot = {"instrument": "NQ", "as_of": "2026-06-16T14:00:00+00:00", "price": 100.0, "setup": {"status": "in_trade"}}
+    save_report(engine, snapshot)  # prompt kopyalandı ama rapor yapıştırılmadı
+    save_report(engine, snapshot, {"text": "Rapor", "model": "test", "validated": True})
 
-    record_analysis(engine, {
-        "instrument": "NQ", "as_of": "2026-06-16T14:00:00+00:00", "price": 100.0,
-        "score": {"bias": "neutral", "total": 0.0, "coverage": 50}, "scenarios": None,
-    })
-
-    rows = client.get("/analyses", params={"symbol": "NQ"}).json()
+    rows = client.get("/reports", params={"symbol": "NQ"}).json()
 
     assert len(rows) == 1
     assert "snapshot" not in rows[0]
-    assert rows[0]["bias"] == "neutral"
+    assert rows[0]["report_text"] == "Rapor"
+    assert rows[0]["setup_status"] == "in_trade"
 
 
 def test_report_without_api_key_returns_503(client, engine, monkeypatch):
@@ -88,7 +93,7 @@ def test_report_without_api_key_returns_503(client, engine, monkeypatch):
         raise ReportError("Claude API anahtarı geçersiz veya tanımlı değil (ANTHROPIC_API_KEY).")
 
     monkeypatch.setattr(api, "generate_report", fail)
-    save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
+    save_candles(engine, "NQ", "5m", short_setup())
 
     response = client.post("/report", params={"symbol": "NQ"})
 
@@ -120,25 +125,16 @@ def test_refresh_endpoints_run_in_background(client, engine, monkeypatch):
 
 
 def test_prompt_and_check_report_flow(client, engine):
-    save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
+    save_candles(engine, "NQ", "5m", short_setup())
 
     prompt = client.post("/prompt", params={"symbol": "NQ"}).json()
     assert "<market_data>" in prompt["text"]
+    assert "10am" in prompt["text"]
 
     result = client.post("/check-report", json={"id": prompt["id"], "text": "Rapor: fiyat verisi yok."}).json()
     assert result["validated"] is True
     assert client.post("/check-report", json={"id": 999, "text": "x"}).status_code == 404
     assert client.post("/check-report", json={"id": prompt["id"], "text": "  "}).status_code == 400
-
-
-def test_record_and_evaluate_endpoints(client, engine):
-    save_candles(engine, "NQ", "1h", make_hourly_candles("2026-06-15 18:00", 300))
-
-    saved = client.post("/record", params={"symbol": "NQ"}).json()
-    result = client.post("/evaluate", params={"symbol": "NQ"}).json()
-
-    assert saved[0]["instrument"] == "NQ"
-    assert result["summary"]["evaluated"] == 0  # 5m veri yok, sonuç henüz ölçülemez
 
 
 def test_empty_database_gives_friendly_message(client):

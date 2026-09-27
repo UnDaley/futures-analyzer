@@ -1,50 +1,47 @@
-"""Haber ve ekonomik takvim motoru: veriyi çekip kaydeder, kontrat için özet üretir."""
+"""Ekonomik takvim motoru: takvimi çekip kaydeder, bugünkü verileri ve olay riskini özetler.
 
-import logging
+10:00'da açıklanan veriler (ISM, JOLTS, tüketici güveni...) 10am modelinin manipülasyon hareketini
+doğrudan etkileyebildiği için 10:00'a yakın olaylar ayrıca işaretlenir.
+"""
 
 import pandas as pd
 from sqlalchemy import Engine
 
-from futures_analyzer.data.storage import load_events, load_news, save_events, save_news
-from futures_analyzer.news.calendar import calendar_snapshot, fetch_calendar, normalize_events
-from futures_analyzer.news.feeds import fetch_feeds
-from futures_analyzer.news.impact import analyze_headline
+from futures_analyzer.data.storage import load_events, save_events
+from futures_analyzer.market_time import NEW_YORK
+from futures_analyzer.news.calendar import calendar_snapshot, explain, fetch_calendar, normalize_events
 
-logger = logging.getLogger(__name__)
-
-NEWS_HOURS = 48
-NEWS_LIMIT = 8
+NEAR_OPEN_MINUTES = 30  # 10:00'a bu kadar yakın olaylar "açılışa yakın" sayılır
 
 
-def ingest_news(engine: Engine, feeds=fetch_feeds, calendar=fetch_calendar) -> dict[str, int]:
-    """Haberleri ve takvimi çekip kaydeder. Her habere etki analizi eklenir."""
-    items = [{**item, "analysis": analyze_headline(item["title"])} for item in feeds()]
-    events = normalize_events(calendar())
-    return {"news": save_news(engine, items), "events": save_events(engine, events)}
+def ingest_news(engine: Engine, calendar=fetch_calendar) -> dict[str, int]:
+    """Takvimi çekip kaydeder."""
+    return {"events": save_events(engine, normalize_events(calendar()))}
 
 
-def news_snapshot(engine: Engine, symbol: str, now: pd.Timestamp | None = None) -> dict:
+def events_snapshot(engine: Engine, now: pd.Timestamp | None = None) -> dict:
     now = now or pd.Timestamp.now(tz="UTC")
-    items = [item for item in load_news(engine, since=now - pd.Timedelta(hours=NEWS_HOURS)) if item["ts"] <= now]
+    events = load_events(engine)
+    return {**calendar_snapshot(events, now), "today": today_events(events, now)}
 
-    headlines = []
-    for item in items[:NEWS_LIMIT]:
-        analysis = item["analysis"] or {}
-        headlines.append({
-            "time_utc": item["ts"].isoformat(),
-            "hours_ago": round((now - item["ts"]).total_seconds() / 3600, 1),
-            "source": item["source"],
-            "title": item["title"],
-            "link": item["link"],
-            # Bu kontrat için olası etki (kurallar eşleşmediyse None)
-            "possible_impact": analysis.get("assets", {}).get(symbol),
-            "all_assets": analysis.get("assets", {}),
-            "confidence": analysis.get("confidence", "low"),
+
+def today_events(events: list[dict], now: pd.Timestamp) -> list[dict]:
+    """Bugünün (New York tarihi) olayları; 10:00'a yakın olanlar `near_open: true`."""
+    today = now.tz_convert(NEW_YORK).date()
+    ten_am = pd.Timestamp.combine(today, pd.Timestamp("10:00").time()).tz_localize(NEW_YORK)
+    result = []
+    for event in events:
+        local = event["ts"].tz_convert(NEW_YORK)
+        if local.date() != today:
+            continue
+        result.append({
+            "title": event["title"],
+            "impact": event["impact"],
+            "time_ny": local.strftime("%H:%M"),
+            "released": bool(event["ts"] <= now),
+            "near_open": abs((local - ten_am).total_seconds()) <= NEAR_OPEN_MINUTES * 60,
+            "forecast": event["forecast"],
+            "previous": event["previous"],
+            "why_it_matters": explain(event["title"]),
         })
-
-    return {
-        "calendar": calendar_snapshot(load_events(engine), now),
-        "headlines": headlines,
-        "note": "Haber etkileri başlıktaki anahtar kelimelere dayalı kaba tahminlerdir (düşük güven). "
-                "Kaynaklar şimdilik sadece resmi kurumlar (Fed, BEA); genel piyasa haberleri kapsanmıyor.",
-    }
+    return result

@@ -36,13 +36,3 @@ def test_second_start_is_ignored_while_running():
 
     assert job.start() is False
     assert job.run_now() is False
-
-
-def test_auto_record_skips_when_market_closed(engine):
-    import pandas as pd
-
-    from futures_analyzer.refresh import auto_record
-
-    saturday = pd.Timestamp("2026-06-20 12:00", tz="America/New_York").tz_convert("UTC")
-
-    assert auto_record(engine, 60, now=saturday) == "piyasa kapalı, kayıt yapılmadı"

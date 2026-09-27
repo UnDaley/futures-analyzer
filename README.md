@@ -1,37 +1,27 @@
-# Futures Analyzer
+# Futures Analyzer — 10am Model
 
-NQ, ES ve GC futures piyasaları için analiz asistanı.
+NQ, ES ve GC futures için Powell Trades'in 10am modelini takip eden analiz asistanı.
 
-**Otomatik işlem yapmaz.** Broker'a emir göndermez. Sadece veri toplar, analiz eder ve senaryo raporu üretir. Son karar kullanıcıya aittir.
+**Otomatik işlem yapmaz.** Broker'a emir göndermez. Veriyi toplar, modelin kurallarını uygular, bugünkü durumu ve geçmiş sonuçları gösterir. Son karar kullanıcıya aittir.
 
 ## Durum
 
-- Faz 1 (piyasa verisi toplama) tamamlandı.
-- Faz 2 (teknik göstergeler) tamamlandı: EMA 20/50/100/200, RSI 14, MACD, ATR 14, seans VWAP'ı, hacim ortalaması, EMA trendi.
-- Faz 3 (market structure) tamamlandı: swing high/low, HH/HL/LH/LL, BOS, CHoCH.
-- Faz 4 (destek/direnç) tamamlandı: PDH/PDL, PWH/PWL, seans high/low, VWAP, swing'ler, round number, zone'lar.
-- Faz 5 (seans analizi) tamamlandı: Asya/Londra/New York high-low, NY açılışı, önceki NY high-low.
-- Faz 6 (likidite / price action) tamamlandı: BSL/SSL, equal high/low, sweep, FVG, displacement, order block, premium/discount.
-- Faz 7 (makro) tamamlandı: Fed faizi, 2Y/10Y, eğri, reel faiz, CPI/PPI/PCE, NFP, işsizlik, GSYH (FRED).
-- Faz 8 (intermarket) tamamlandı: ES/NQ/YM/RTY/DXY/US10Y/US02Y/VIX (NQ, ES), DXY/US10Y/reel faiz/SI (GC), korelasyon, SMT.
-- Faz 9 (haber ve ekonomik takvim) tamamlandı: olay riski, yeni açıklanan veriler, resmi kaynaklardan haberler.
-- Faz 10 (senaryo motoru ve skor) tamamlandı: ağırlıklı skor, bullish/bearish/neutral senaryolar.
-- Faz 11 (Claude entegrasyonu) tamamlandı: standart formatta Türkçe rapor, uydurma fiyat kontrolü.
-- Faz 12 (backtest / değerlendirme) tamamlandı: analiz günlüğü, sonuç ölçümü, geçmişe dönük backtest.
-- Faz 13 (dashboard) tamamlandı: grafik, senaryo seviyeleri, skor, olay riski, rapor ve analiz geçmişi.
+- Faz 1-13: veri toplama, göstergeler, seanslar, ekonomik takvim, Claude raporu ve dashboard tamamlandı.
+- Faz 14 (10am modeli): skor ve senaryo motoru kaldırıldı; sistem tamamen 10am modeline odaklandı. Makro, intermarket, likidite/price action, destek/direnç ve market structure modülleri de kaldırıldı (git geçmişinde duruyor). Dashboard daha okunabilir olacak şekilde yeniden tasarlandı.
 
 ## Günlük kullanım (terminalsiz)
 
 1. Masaüstündeki **Futures Analyzer** kısayoluna çift tıklayın (veya uygulama menüsünde aratın). Açılan pencere sunucudur; açık kalsın.
 2. Tarayıcıda dashboard açılır (http://localhost:8000). Veriler açılışta ve 15 dakikada bir kendiliğinden güncellenir.
-3. Claude raporu için dashboard'daki 3 adımı izleyin: "Prompt'u kopyala" → claude.ai'ye yapıştır → cevabı kutuya yapıştır → "Kontrol et ve kaydet".
-4. Piyasa açıkken analizler saatte bir otomatik kaydedilir, 1 gün sonra sonuçları otomatik ölçülür. Özet için "Sonuçları ölç".
-5. Kapatmak için sunucu penceresinde Ctrl+C.
+3. Üstten kontratı seçin. "Bugünkü setup" kartı modelin hangi adımda olduğunu ve şu an neyi beklediğini yazar; grafikte 10:00 açılışı, manipülasyon, giriş, stop ve hedef işaretlidir.
+4. "Geçmiş performans" aynı kuralların son günlerdeki sonuçlarını gösterir (her açılışta 5M veriden yeniden hesaplanır).
+5. Claude raporu (isteğe bağlı): "Claude raporu" bölümünü açıp 3 adımı izleyin.
+6. Kapatmak için sunucu penceresinde Ctrl+C.
 
 Kısayol yoksa (yeni bilgisayar) bir kez: `./install_shortcut.sh`. Kısayol olmadan başlatmak için: `./start.sh`.
 İlk açılışta GNOME "Başlatmaya izin ver" (Allow Launching) sorabilir.
 
-Ayarlar (`.env`): `AUTO_REFRESH_MINUTES=15` (0 = otomatik güncelleme kapalı), `AUTO_RECORD_MINUTES=60` (0 = otomatik kayıt kapalı).
+Ayarlar (`.env`): `AUTO_REFRESH_MINUTES=15` (0 = otomatik güncelleme kapalı).
 
 ## Kurulum
 
@@ -78,23 +68,18 @@ export UV_PROJECT_ENVIRONMENT=/goinfre/$USER/venvs/futures-analyzer
 
 ```bash
 uv run python -m futures_analyzer.cli fetch NQ                     # bütün zaman dilimleri
-uv run python -m futures_analyzer.cli fetch NQ --timeframe 1h      # sadece 1h (+ 4h)
-uv run python -m futures_analyzer.cli fetch-macro                  # makro veriler (FRED)
-uv run python -m futures_analyzer.cli fetch-intermarket            # YM, RTY, DXY, US10Y, VIX, SI (1h)
-uv run python -m futures_analyzer.cli fetch-news                   # haberler + ekonomik takvim
+uv run python -m futures_analyzer.cli fetch-news                   # ekonomik takvim
 uv run python -m futures_analyzer.cli fetch-all                    # hepsini tek seferde çek
-uv run python -m futures_analyzer.cli show NQ --timeframe 4h --limit 10
-uv run python -m futures_analyzer.cli snapshot NQ                 # bütün analiz verisi (JSON)
+uv run python -m futures_analyzer.cli show NQ --timeframe 5m --limit 10
+uv run python -m futures_analyzer.cli snapshot NQ                 # bugünkü setup, seviyeler, geçmiş (JSON)
+uv run python -m futures_analyzer.cli history NQ --days 60 --csv nq.csv   # son günlerin 10am sonuçları
 uv run python -m futures_analyzer.cli report NQ                   # Claude raporu (ANTHROPIC_API_KEY gerekir, kaydedilir)
 uv run python -m futures_analyzer.cli prompt NQ                   # API anahtarı olmadan: claude.ai için prompt dosyası
 uv run python -m futures_analyzer.cli check-report 4              # claude.ai raporunu yapıştır, kontrol et ve kaydet
-uv run python -m futures_analyzer.cli record                      # analizleri Claude'suz kaydet
-uv run python -m futures_analyzer.cli evaluate                    # kayıtların sonuçlarını ölç ve özetle
-uv run python -m futures_analyzer.cli backtest NQ --days 50 --step 4h --csv nq.csv
 
 uv run uvicorn futures_analyzer.api:app --reload
-curl "localhost:8000/candles?symbol=NQ&tf=1h&limit=5"
 curl "localhost:8000/snapshot?symbol=NQ"
+curl "localhost:8000/chart?symbol=NQ&tf=5m&limit=100"
 ```
 
 ## Testler
@@ -115,129 +100,82 @@ uv run pytest -m network    # gerçek yfinance verisiyle test
 - yfinance'in son satırı henüz dolmamış mumdur (hacmi 0 olabilir). Snapshot'taki `last_bar_complete` bunu gösterir.
 - GC 1H verisinde seansın 18:00 mumunun hacmi genelde 0 gelir.
 
-## Gösterge notları
+## 10am modeli
 
-- RSI ve ATR, TradingView ile aynı Wilder ortalamasını (ta.rma) kullanır. Değerler `ta` kütüphanesiyle birebir karşılaştırıldı.
+Kurallar `src/futures_analyzer/strategy/ten_am.py` dosyasındadır; 5 dakikalık mumlarla, New York saatiyle uygulanır.
+
+1. **Açılış**: 10:00 mumunun açılış fiyatı.
+2. **Manipülasyon**: fiyat açılıştan en az eşik kadar uzaklaşır (NQ 15, ES 4, GC 3 puan; `instruments.py` içindeki `trap_points`). Yukarı manipülasyon short, aşağı manipülasyon long setup'ı hazırlar.
+3. **Geri kırılım**: bir 5M mum açılışın öbür tarafında kapanır.
+4. **Retest ve giriş**: sonraki bir mum açılışa geri dokunup kırılım tarafında kapanır; giriş = açılış fiyatı. Mum manipülasyon tarafında kapanırsa kırılım başarısız sayılır ve 3. adım yeniden beklenir.
+5. **Stop**: manipülasyonun en uç noktası + 1 tick. **Hedef**: girişten en az 1R uzaktaki ilk alınmamış likidite (önceki gün, Asya, Londra, 08:00-10:00 yükseği/düşüğü, 10:00 sonrası tepe/dip, 5M swing'ler). Uygun seviye yoksa 2R.
+6. Giriş 12:00'ye kadar oluşmazsa o gün setup yoktur. Açık işlem 16:00'da son kapanışla sonuçlandırılır.
+
+Sonuç ölçümü:
+
+- Hedefe veya stop'a iğneyle dokunmak yeterlidir. Aynı 5M mumda ikisine birden dokunulursa sonuç "belirsiz" sayılır (sıra bilinemez). Retest mumu stop'a da dokunduysa sonuç stop sayılır.
+- Yalnızca kapanmış mumlar kullanılır; bir günün sonucu sonradan gelen veriyle değişmez (testle doğrulandı). Canlı durum ve geçmiş istatistikler aynı fonksiyonla hesaplanır.
+- R = stop mesafesi. İstatistikler: setup sayısı, hedef/stop, kazanma oranı (hedef / (hedef + stop)), ortalama ve toplam R, long/short ayrımı.
+
+Sınırlar:
+
+- Model 5M mumlarla çalışır; popüler kullanımda 1M grafik tercih edilir. 1M'de retest ve stop sırası daha kesin görülür ama yfinance 1M veriyi yalnızca ~7 gün geriye verir.
+- Veri 10-15 dakika gecikmelidir. Dashboard'daki canlı durum bu gecikmeyle gelir; işlem kararı için kendi platformunuzdaki fiyatı esas alın.
+- Eşikler ve kurallar kaynaklardan derlenen varsayılanlardır; kendi uyguladığınız kurallardan farklıysa `ten_am.py` ve `instruments.py` içinden değiştirin.
+
+İlk ölçüm (20 Temmuz - 24 Eylül 2026, 48 işlem günü, varsayılan kurallarla):
+
+| Kontrat | Setup | Hedef / stop | Kazanma oranı | Ortalama R | Toplam R |
+|---|---|---|---|---|---|
+| NQ | 20 | 11 / 6 | %64,7 | +0,61 | +12,11 |
+| ES | 21 | 9 / 11 | %45,0 | +0,16 | +3,31 |
+| GC | 22 | 8 / 11 | %42,1 | +0,16 | +3,56 |
+
+Örneklem küçüktür; bu sonuçlar kuralların gelecekte de aynı şekilde çalışacağını göstermez.
+
+## Grafik göstergeleri
+
+- Grafikte isteğe bağlı EMA 20/50/200 ve seans VWAP'ı gösterilebilir; 10am modeli bunları kullanmaz.
 - VWAP her seans açılışında (New York 18:00) sıfırlanır ve sadece 1h, 15m, 5m için hesaplanır.
-- Yeterli veri yoksa değer `null` olur, tahmin edilmez.
 
-## Market structure kuralları
+## Ekonomik takvim
 
-- Swing high: high'ı solundaki 3 mumdan yüksek, sağındaki 3 mumdan düşük olmayan mum (swing low tersi). Swing ancak sağdaki 3 mum kapanınca kesinleşir.
-- Etiketler: her swing bir önceki aynı türden swing ile karşılaştırılır (HH/LH/EH, HL/LL/EL).
-- BOS/CHoCH: kapanış son kırılmamış swing'in ötesine geçerse kırılım olur. Trend yönündeyse BOS, tersiyse CHoCH. İğneler sayılmaz.
-- Yapı sadece kapanmış mumlarla hesaplanır. Geçmiş olaylar sonradan gelen veriyle değişmez (testle doğrulandı).
-- `trend_by_breaks` son kırılımın yönüdür, `swing_pattern` son swing etiketleridir. Etiketler yeni swing oluşana kadar geriden gelir; `price_position` fiyatın son swing'lere göre yerini gösterir.
-
-## Destek / direnç
-
-- PDH/PDL, PWH/PWL ve seans high/low 1H mumlardan, CME seansına (NY 18:00-17:00) göre hesaplanır. yfinance'in günlük verisi vade geçişi (roll) haftalarında farklı kontrata bakabildiği için kullanılmaz.
-- Seviyeler: referanslar, 5m seans VWAP'ı, son 10 adet 1H ve 4H swing, en yakın round number'lar (NQ 100, ES 25, GC 25).
-- 1H ATR'nin çeyreğinden yakın seviyeler tek zone'da birleşir; `strength` zone'daki farklı kaynak sayısıdır.
-
-## Seanslar (New York saati)
-
-| Seans | Saat |
-|---|---|
-| Asya | 18:00-03:00 |
-| Londra | 03:00-08:00 |
-| New York | 08:00-17:00 |
-
-NY açılışı NQ/ES için 09:30, GC için 08:20 (COMEX). Seanslar New York saatine göre tanımlıdır, yaz saati değişimleri otomatik uygulanır. `taken` alanı bir seansın high/low'unun sonraki seanslarda aşılıp aşılmadığını gösterir. Seans seviyeleri destek/direnç zone'larına da eklenir.
-
-## Likidite / price action (1H ve 15M, son 500 kapanmış mum)
-
-- BSL/SSL: aşılmamış swing high/low'lar; ATR'nin 0,1'i kadar yakın olanlar equal high/low olarak birleşir.
-- Sweep: iğne seviyeyi aşar ama mum içeride kapanır. Dışarıda kapanış kırılımdır, sweep değildir.
-- FVG (imbalance): 3 mumlu boşluk; open / partial durumdakiler raporlanır, dolanlar raporlanmaz.
-- Displacement: gövdesi önceki ATR'nin 1,5 katından büyük, gövde/aralık oranı en az %60 olan mum.
-- Order block: displacement'tan önceki son ters renkli mum; fresh / tested, ötesinde kapanış olursa geçersiz.
-- Premium/discount: son 30 adet 4H mumun aralığında fiyatın yüzdesi (>%55 premium, <%45 discount).
-
-## Makro (FRED)
-
-API anahtarı gerekmez. Faizler günlük (genelde 1 iş günü gecikmeli), enflasyon ve istihdam aylık güncellenir; her değerin tarihi snapshot'ta verilir. Enflasyon endeksleri yıllık % değişim (YoY) olarak, NFP aylık değişim (bin kişi) olarak raporlanır. Not: FRED özel User-Agent içeren istekleri reddediyor.
-
-## Intermarket
-
-Her ilişkili varlığın günlük değişimi (faizlerde baz puan) önceki işlem günü kapanışına göre hesaplanır ve beklenen ilişkiye (+1 aynı yön, -1 ters yön) göre kontratın hareketini doğrulayıp (`confirms`) doğrulamadığı (`diverges`) belirtilir. `correlation_20d` ilişkinin gerçekten sürüp sürmediğini gösterir. SMT: eş varlıklardan (NQ-ES, GC-SI) biri önceki gün high/low'unu alıp diğeri alamadıysa uyumsuzluk işaretlenir. 2 yıllık faiz ve reel faiz FRED'den gelir (1 iş günü gecikmeli olabilir, tarihi belirtilir).
-
-## Haber ve ekonomik takvim
-
-- Takvim: faireconomy.media (Forex Factory) haftalık JSON, sadece ABD'nin yüksek/orta etkili olayları. Resmi değildir; saatte bir güncellenir ve sık istekleri geçici olarak reddeder (HTTP 429), bu durumda veritabanındaki son takvim kullanılır. `calendar_manual.json` dosyasına aynı biçimde elle olay eklenebilir.
-- `event_risk`: en yakın yüksek etkili olay, kaç dakika kaldığı ve neden önemli olduğu. 60 dakikadan azsa `imminent: true`.
-- Haberler: Fed basın açıklamaları, Fed konuşmaları, BEA (RSS). BLS ve CNBC otomatik erişimi engelliyor. Yeni kaynak `news/feeds.py` içindeki `FEEDS` sözlüğüne eklenebilir.
-- Haber etkisi başlıktaki anahtar kelimelere göre kaba bir sınıflandırmadır (`confidence: low`); yönü belirsiz olanlar `unclear` olarak işaretlenir.
-- Siteler User-Agent başlığına farklı tepki verdiği için bütün istekler `http.py` üzerinden yapılır.
-
-## Skor ve senaryolar
-
-Skor Python'da hesaplanır; her bileşen -1 (bearish) ile +1 (bullish) arası bir değer alır ve ağırlığıyla çarpılır:
-
-| Bileşen | Ağırlık | Nasıl |
-|---|---|---|
-| Trend | 20 | EMA trendi: 1D %40, 4H %35, 1H %25 |
-| Market structure | 20 | Son BOS/CHoCH yönü: 4H %50, 1H %30, 15M %20 |
-| Likidite | 15 | Premium/discount, son sweep, son displacement |
-| Hacim | 10 | Son 5 kapanmış 1H mumda yükselen/düşen mum hacmi dengesi |
-| VWAP | 10 | 15M fiyat seans VWAP'ının üstünde/altında |
-| Makro | 10 | 10Y faizin (GC için reel faizin) 20 günlük değişimi; artış olumsuz |
-| Intermarket | 10 | İlişkili varlıkların bugünkü yönü, SMT uyumsuzluğu |
-| Haber | 5 | Son 24 saatte yönlü başlıklar (düşük güven) |
-
-Toplam -100 ile +100 arasıdır; |toplam| < 15 ise bias nötrdür. Skor olasılık değildir, kanıtların yön uyumudur. `coverage` kaç puanlık ağırlığın gerçekten hesaplanabildiğini gösterir.
-
-Senaryolar: tetik = en yakın direnç/destek zone'unun kenarı (fiyat bir zone'un içindeyse o zone), hedefler = tetikten ve birbirinden en az yarım ATR uzak sonraki iki zone, invalidation = karşı tetik. Her senaryonun risk faktörleri, ona ters düşen skor bileşenleri ve olay riskidir.
+- Kaynak: faireconomy.media (Forex Factory) haftalık JSON, sadece ABD'nin yüksek/orta etkili olayları. Resmi değildir; saatte bir güncellenir ve sık istekleri geçici olarak reddeder (HTTP 429), bu durumda veritabanındaki son takvim kullanılır. `calendar_manual.json` dosyasına aynı biçimde elle olay eklenebilir.
+- Bugünkü olaylar listelenir; 10:00'a 30 dakikadan yakın olanlar (ISM, JOLTS, tüketici güveni...) manipülasyon hareketini doğrudan etkileyebileceği için işaretlenir.
+- `event_risk`: en yakın yüksek etkili olay; 60 dakikadan azsa `imminent: true` ve dashboard'da uyarı şeridi çıkar.
 
 ## Claude raporu
 
 ### API anahtarı olmadan (claude.ai ile, ek ücret yok)
 
-1. `uv run python -m futures_analyzer.cli prompt NQ` analizi kaydeder ve `prompts/NQ_<no>.txt` dosyasını yazar (talimatlar + veri).
+1. `uv run python -m futures_analyzer.cli prompt NQ` snapshot'ı kaydeder ve `prompts/NQ_<no>.txt` dosyasını yazar (talimatlar + veri).
 2. Dosyanın içeriğinin tamamını claude.ai'de yeni bir sohbete yapıştırın.
 3. Claude'un cevabını kopyalayın ve `uv run python -m futures_analyzer.cli check-report <no>` komutunu çalıştırıp terminale yapıştırın; bitince yeni satırda Ctrl+D. (Rapor bir dosyadaysa: `check-report <no> dosya.txt`.)
-4. Komut rapordaki fiyatları veriyle karşılaştırır ve raporu analiz kaydına ekler (dashboard'da görünür). Veride olmayan fiyat varsa Claude'a yapıştırılacak düzeltme mesajını yazdırır.
+4. Komut rapordaki fiyatları veriyle karşılaştırır ve raporu kayda ekler (dashboard'da görünür). Veride olmayan fiyat varsa Claude'a yapıştırılacak düzeltme mesajını yazdırır.
 
 `prompts/` klasörü GitHub'a gönderilmez.
 
 ### API anahtarıyla (otomatik)
 
-`report` komutu snapshot'ı Claude'a gönderir ve standart formatta Türkçe rapor yazdırır. Anahtar `.env` dosyasına `ANTHROPIC_API_KEY=...` olarak eklenir; model `ANTHROPIC_MODEL` ile değiştirilebilir (varsayılan `claude-opus-5`).
+`report` komutu snapshot'ı Claude'a gönderir ve standart formatta Türkçe 10am raporu yazdırır (durum, seviyeler, sıradaki adım, likidite, olay riski, geçmiş performans). Anahtar `.env` dosyasına `ANTHROPIC_API_KEY=...` olarak eklenir; model `ANTHROPIC_MODEL` ile değiştirilebilir (varsayılan `claude-opus-5`).
 
-- Bütün hesaplamalar Python'da yapılır; Claude yalnızca yorumlar. System prompt veride olmayan seviye, olasılık veya değer yazmayı yasaklar ve al/sat tavsiyesi vermez.
+- Bütün hesaplamalar Python'da yapılır; Claude yalnızca yorumlar. Claude'a geçmiş istatistikler ve son 10 gün gider. System prompt veride olmayan seviye, olasılık veya değer yazmayı yasaklar ve al/sat tavsiyesi vermez.
 - Rapordaki fiyat gibi görünen her sayı (güncel fiyatın ±%30'u) snapshot'taki değerlerle bir tick toleransla karşılaştırılır. Bilinmeyen sayı varsa Claude'dan bir kez düzeltmesi istenir; hâlâ varsa rapor "doğrulanmadı" olarak işaretlenir ve sayılar listelenir.
 - İstek güvenlik sınıflandırıcısı tarafından reddedilirse sunucu tarafı fallback (`fallbacks: "default"`) devreye girer.
 - System prompt sabittir ve önbelleğe alınır; adaptive thinking ve streaming kullanılır.
-
-## Backtest ve değerlendirme
-
-- `report` ve `record` her analizi `analyses` tablosuna kaydeder. `evaluate` zamanı gelen kayıtlar için 1s / 4s / 1g sonraki fiyat değişimini, bias'ın 4 saatlik yön isabetini ve 1 gün içinde hangi senaryonun tetiklenip hedefe mi invalidation'a mı gittiğini ölçer.
-- `backtest` analiz motorunu geçmişteki anlara o anda bilinen veriyle uygular (Claude kullanılmaz). Canlı analizle aynı `build_snapshot` fonksiyonu kullanılır; `now` sonrasındaki verinin sonucu değiştirmediği testle doğrulanır.
-- Sınırlar: 5m veri ~60 gün olduğu için en fazla ~55 gün geriye gidilebilir; geçmiş haberler dahil edilmez; aylık makro veriler gözlem tarihine göre filtrelenir (gerçek yayın tarihi daha sonradır). 4 saatlik adımlarla gözlemler birbiriyle örtüşür, bu yüzden örneklem gerçekte göründüğünden küçüktür.
-- Başarı ölçütü raporun ne kadar ikna edici yazıldığı değil, bu tablolardır. Her satır `baseline` (sinyal kullanmadan bütün analizler) ile karşılaştırılmalıdır.
-
-İlk ölçüm (3 Ağustos - 22 Eylül 2026, 4 saatlik adım, 180 analiz; başlangıç ağırlıklarıyla):
-
-| Kontrat | Baseline 4s isabet | Bullish bias 4s isabet | Bearish bias 4s isabet | Birincil senaryo hedefe ulaşma |
-|---|---|---|---|---|
-| NQ | %48,3 | %46,8 | %51,3 | %48,4 |
-| ES | %54,4 | %53,7 | %55,6 | %46,0 |
-| GC | %51,4 | %55,7 | %45,7 | %66,1 |
-
-Yorum: NQ ve ES için skorun baseline'a göre anlamlı bir avantajı görünmüyor; GC'deki fark küçük örneklem nedeniyle henüz güvenilir değil. Ağırlıklar ve kurallar bu ölçümlere göre ayarlanmalı.
 
 ## Dashboard
 
 `uv run uvicorn futures_analyzer.api:app` ile açılır: http://localhost:8000
 
-- Grafik: TradingView Lightweight Charts (CDN). Mumlar, Python'da hesaplanan EMA 20/50/200 ve seans VWAP'ı, senaryo tetik ve hedef çizgileri. Saatler New York saatidir.
-- Yan panel: skor ve bileşenleri, olay riski, senaryolar, seanslar, destek/direnç zone'ları.
-- "Claude raporu üret" düğmesi raporu üretir ve kaydeder (API anahtarı gerekir).
-- Analiz geçmişi tablosu kayıtlı analizlerin ölçülen sonuçlarını gösterir. Sayfa dakikada bir yenilenir.
-- Derleme adımı gerektirmeyen tek bir HTML dosyasıdır (`src/futures_analyzer/web/dashboard.html`). İleride React / Next.js'e geçilirse aynı API uç noktaları (`/chart`, `/snapshot`, `/analyses`, `/report`) kullanılabilir.
+- Bugünkü setup: durum etiketi, "şimdi ne bekleniyor" cümlesi, 4 adımlı kontrol listesi, giriş/stop/hedef/R:R.
+- Grafik (TradingView Lightweight Charts, CDN): 5M/15M/1H mumlar, 10:00 açılışı, manipülasyon ucu, stop ve hedef çizgileri; manipülasyon, kırılım, giriş ve sonuç işaretleri. EMA/VWAP isteğe bağlı. Saatler New York saatidir.
+- Geçmiş performans: istatistik kutuları ve gün gün sonuç tablosu. Bugünün seviyeleri ve ekonomik takvim yan panelde.
+- Açık ve koyu temaya uyar; dar ekranda setup kartı en üstte gelir. Sayfa dakikada bir yenilenir.
+- Derleme adımı gerektirmeyen tek bir HTML dosyasıdır (`src/futures_analyzer/web/dashboard.html`). API uç noktaları: `/snapshot`, `/chart`, `/reports`, `/prompt`, `/check-report`, `/report`, `/refresh`.
 
 ## Bilinçli olarak yapılmayanlar
 
 - Otomatik emir, broker bağlantısı: yok ve eklenmeyecek.
-- Redis: şu an ihtiyaç yok (hesaplar birkaç saniye sürüyor); önbellek gerekirse eklenecek.
+- Redis: şu an ihtiyaç yok (snapshot 1 saniyenin altında hesaplanıyor).
 - Gerçek zamanlı veri: yfinance gecikmeli; `DataProvider` arayüzüyle ücretli bir kaynak (örn. Databento) eklenebilir.
